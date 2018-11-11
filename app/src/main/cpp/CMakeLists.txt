@@ -6,10 +6,11 @@ add_definitions(-DNO_LOCALE_SUPPORT=True)
 include_directories(.)
 
 add_subdirectory(AndroidDef)
+add_subdirectory(utils)
 
 aux_source_directory(. RootSrc)
 
 add_library(unpack SHARED ${RootSrc} )
 
-target_link_libraries(unpack AndroidDef android c dl log)
+target_link_libraries(unpack AndroidDef android c dl log Utils)
 

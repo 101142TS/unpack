@@ -1,11 +1,4 @@
-package f8left.fupk3.util;
-//===-----------------------------------------------------------*- xxxx -*-===//
-//
-//                     Created by F8LEFT on 2018/4/4.
-//                   Copyright (c) 2018. All rights reserved.
-//===----------------------------------------------------------------------===//
-// export some help func
-//===----------------------------------------------------------------------===//
+package z.unpack.util;
 
 import android.content.Context;
 
