@@ -14,7 +14,9 @@ import java.io.FileWriter;
 public class MainActivity extends AppCompatActivity {
     public final static String hookSo = "/data/local/tmp/libunpack.so";
     public final static String hookFile = "/data/local/tmp/unpack.txt";
-    public final static String mTargetPackage = "zzz.jjni";       //abjni8
+    //public final static String mTargetPackage = "zzz.jjni";       //一切正常
+    //public final static String mTargetPackage = "com.eg.android.AlipayGphone"; //有點問題，會莫名崩潰
+    public final static String mTargetPackage = "com.wbxm.icartoon";        //ok,1.txt
     public final static String mTargetApplication = "????";
     public final static String mTargetActivity = "?????";
     static {
