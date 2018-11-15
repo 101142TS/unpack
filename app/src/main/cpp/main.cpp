@@ -8,6 +8,15 @@
 #include "entry.cpp"
 #include <dlfcn.h>
 
+struct FupkInterface {
+    void* reserved0;
+    void* reserved1;
+    void* reserved2;
+    void* reserved3;
+
+    bool (*ExportMethod)(void* thread, Method* method);
+};
+FupkInterface* gUpkInterface;
 HashTable* userDexFiles = nullptr;
 Object* (*fdvmDecodeIndirectRef)(void* self, jobject jobj) = nullptr;
 Thread* (*fdvmThreadSelf)() = nullptr;
@@ -19,6 +28,8 @@ void (*fdvmClearException)(Thread* self) = nullptr;
 ClassObject* (*fdvmDefineClass)(DvmDex* pDvmDex, const char* descriptor, Object* classLoader) = nullptr;
 bool (*fdvmIsClassInitialized)(const ClassObject* clazz) = nullptr;
 bool (*fdvmInitClass)(ClassObject* clazz) = nullptr;
+jmethodID hookMethodID;
+jclass dumpMethodclazz;
 
 void ReadClassDataHeader(const uint8_t **pData, DexClassDataHeader *pHeader) {
     pHeader->staticFieldsSize = readUnsignedLeb128(pData);
@@ -137,7 +148,7 @@ DvmDex* getdvmDex(int idx, const char *&dexName) {
     dexName = dexOrJar->fileName;
     return dvmDex;
 }
-void DumpClass(DvmDex *pDvmDex, Object *loader) {
+void DumpClass(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
     DexFile *pDexFile = pDvmDex->pDexFile;
     Thread* self = fdvmThreadSelf();
 
@@ -210,7 +221,17 @@ void DumpClass(DvmDex *pDvmDex, Object *loader) {
                     pData->directMethods[i].codeOff = 0;
                 }
                 if (ac & ACC_NATIVE) {
+                    FLOGD("NATIVE");
                     //需要在java層進行反射調用
+                    jstring className = env->NewStringUTF(descriptor);
+                    jstring methodName = env->NewStringUTF(method->name);
+                    jboolean flag;
+                    flag = env->CallStaticBooleanMethod(dumpMethodclazz,
+                                                        hookMethodID,
+                                                        className,
+                                                        methodName
+                                                        );
+                    env->DeleteLocalRef(className);
                 }
             }
         }
@@ -230,13 +251,19 @@ void DumpClass(DvmDex *pDvmDex, Object *loader) {
                     pData->virtualMethods[i].codeOff = 0;
                 }
                 if (ac & ACC_NATIVE) {
+                    FLOGD("NATIVE");
                     //需要在java層進行反射調用
+                    jstring className = env->NewStringUTF(descriptor);
+                    jstring methodName = env->NewStringUTF(method->name);
+                    jboolean flag;
+                    flag = env->CallStaticBooleanMethod(dumpMethodclazz,
+                                                        hookMethodID,
+                                                        className,
+                                                        methodName);
+                    env->DeleteLocalRef(className);
                 }
             }
         }
-        bail:
-        FLOGD("goto bail");
-
     }
 }
 Object* searchClassLoader(DvmDex *pDvmDex){
@@ -278,6 +305,11 @@ Object* searchClassLoader(DvmDex *pDvmDex){
     return result;
 }
 void unpackAll(JNIEnv* env, jobject obj, jstring folder) {
+    dumpMethodclazz = env->FindClass("android/app/fupk3/dumpMethod");
+    hookMethodID = env->GetStaticMethodID(dumpMethodclazz,
+                                          "hookMethod",
+                                          "(Ljava/lang/String;Ljava/lang/String;)Z");
+
     FLOGD("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
 
     for (int i = 0; i < userDexFilesSize(); i++) {
@@ -293,7 +325,8 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder) {
         Object *loader = searchClassLoader(pDvmDex);
 
         if (loader == NULL)     continue;
-        DumpClass(pDvmDex, loader);
+        gUpkInterface->reserved3 = (void *)(loader);
+        DumpClass(pDvmDex, loader, env);
     }
     return;
 }
@@ -302,7 +335,9 @@ bool init() {
     auto libdvm = dlopen("libdvm.so", RTLD_NOW);
     if (libdvm == nullptr)
         goto bail;
-
+    gUpkInterface = (FupkInterface*)dlsym(libdvm, "gFupk");
+    if (gUpkInterface == nullptr)
+        goto bail;
     {
         auto fn = (HashTable* (*)())dlsym(libdvm, "dvmGetUserDexFiles");
         if (fn == nullptr) {
@@ -338,6 +373,7 @@ bool init() {
     floadClassFromDex = (ClassObject* (*)(DvmDex*, const DexClassDef*, Object*)) dlsym(libdvm, "loadClassFromDex");
     if (floadClassFromDex == nullptr)
         goto bail;
+
     done = true;
 
     bail:
