@@ -169,6 +169,15 @@ void DumpClass(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
             continue;
         }
 
+        jstring className = env->NewStringUTF(descriptor);
+        jstring methodName = env->NewStringUTF("");
+        jboolean flag;
+        flag = env->CallStaticBooleanMethod(dumpMethodclazz,
+                                            hookMethodID,
+                                            className,
+                                            methodName);
+        env->DeleteLocalRef(className);
+#if 0
         fdvmClearException(self);
         clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
         // 当classLookUp抛出异常时，若没有进行处理就进入下一次lookUp，将导致dalvikAbort
@@ -264,6 +273,7 @@ void DumpClass(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
                 }
             }
         }
+#endif
     }
 }
 Object* searchClassLoader(DvmDex *pDvmDex){
