@@ -169,15 +169,7 @@ void DumpClass(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
             continue;
         }
 
-        jstring className = env->NewStringUTF(descriptor);
-        jstring methodName = env->NewStringUTF("");
-        jboolean flag;
-        flag = env->CallStaticBooleanMethod(dumpMethodclazz,
-                                            hookMethodID,
-                                            className,
-                                            methodName);
-        env->DeleteLocalRef(className);
-#if 0
+
         fdvmClearException(self);
         clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
         // 当classLookUp抛出异常时，若没有进行处理就进入下一次lookUp，将导致dalvikAbort
@@ -201,6 +193,15 @@ void DumpClass(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
             }
         }
 
+        gUpkInterface->reserved2 = (void *)(clazz);
+
+        jstring className = env->NewStringUTF(descriptor);
+        jboolean flag;
+        flag = env->CallStaticBooleanMethod(dumpMethodclazz,
+                                            hookMethodID,
+                                            className);
+        env->DeleteLocalRef(className);
+#if 0
         data = dexGetClassData(pDexFile, pClassDef);
 
         //返回DexClassData结构
@@ -318,7 +319,7 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder) {
     dumpMethodclazz = env->FindClass("android/app/fupk3/dumpMethod");
     hookMethodID = env->GetStaticMethodID(dumpMethodclazz,
                                           "hookMethod",
-                                          "(Ljava/lang/String;Ljava/lang/String;)Z");
+                                          "(Ljava/lang/String;)Z");
 
     FLOGD("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
 
