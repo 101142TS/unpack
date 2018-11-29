@@ -172,9 +172,13 @@ void DumpClassbyDexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
 
         DexClassDef temp = *pClassDef;
 
-        const char *header = "Landroid";
+        const char *header1 = "Landroid";
+        const char *header2 = "Ldalvik";
+        const char *header3 = "Ljava";
+        const char *header4 = "Llibcore";
         //如果是系统类，或者classDataOff为0，则跳过
-        if (!strncmp(header, descriptor, 8) || !pClassDef->classDataOff) {
+        if (!strncmp(header1, descriptor, strlen(header1)) ||
+            !pClassDef->classDataOff) {
             FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
             continue;
         }
@@ -254,9 +258,13 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env, int numDvmD
 
         DexClassDef temp = *pClassDef;
 
-        const char *header = "Landroid";
+        const char *header1 = "Landroid";
+        const char *header2 = "Ldalvik";
+        const char *header3 = "Ljava";
+        const char *header4 = "Llibcore";
         //如果是系统类，或者classDataOff为0，则跳过
-        if (!strncmp(header, descriptor, 8) || !pClassDef->classDataOff) {
+        if (!strncmp(header1, descriptor, strlen(header1)) ||
+            !pClassDef->classDataOff) {
             FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
             continue;
         }
