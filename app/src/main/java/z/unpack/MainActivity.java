@@ -18,7 +18,11 @@ public class MainActivity extends AppCompatActivity {
     public MainActivity() {
         super();
     }
-
+    //public final static String mTargetPackage = "hbw.net.com.work";
+    //public final static String mTargetPackage = "com.da.showincome";
+    public final static String mTargetPackage = "com.example.simple";
+    //public final static String mTargetPackage = "z.zzz";
+    //public final static String mTargetPackage = "com.snda.tt";
     //public final static String mTargetPackage = "zzz.jjni";       //一切正常
     //public final static String mTargetPackage = "com.eg.android.AlipayGphone"; //有點問題，會莫名崩潰
     //public final static String mTargetPackage = "zzz.jjni";        //ok,1.txt
@@ -28,7 +32,7 @@ public class MainActivity extends AppCompatActivity {
 
     //public final static String mTargetPackage = "com.cctir.huinongbao";
     //public final static String mTargetPackage = "com.tencent.mobileqq";
-    public final static String mTargetPackage = "com.eg.android.AlipayGphone";
+    //public final static String mTargetPackage = "com.eg.android.AlipayGphone";
     public final static String mTargetApplication = "????";
     public final static String mTargetActivity = "?????";
     static {
@@ -99,8 +103,8 @@ public class MainActivity extends AppCompatActivity {
             FileWriter writer = new FileWriter(file);
             BufferedWriter wr = new BufferedWriter(writer);
             wr.write(mTargetPackage + "\n");
-            wr.write(mTargetApplication + "\n");
-            wr.write(mTargetActivity + "\n");
+            //wr.write(mTargetApplication + "\n");
+            //wr.write(mTargetActivity + "\n");
             wr.close();
             writer.close();
         } catch (Exception e) {

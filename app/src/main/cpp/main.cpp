@@ -7,14 +7,21 @@
 #include "utils/RWGuard.h"
 #include "entry.cpp"
 #include <dlfcn.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 struct FupkInterface {
     void* reserved0;
     void* reserved1;
     void* reserved2;
     void* reserved3;
-
-    bool (*ExportMethod)(void* thread, Method* method);
+    void* reserved4;
+    void* reserved5;
+    void* reserved6;
 };
 FupkInterface* gUpkInterface;
 HashTable* userDexFiles = nullptr;
@@ -28,9 +35,12 @@ void (*fdvmClearException)(Thread* self) = nullptr;
 ClassObject* (*fdvmDefineClass)(DvmDex* pDvmDex, const char* descriptor, Object* classLoader) = nullptr;
 bool (*fdvmIsClassInitialized)(const ClassObject* clazz) = nullptr;
 bool (*fdvmInitClass)(ClassObject* clazz) = nullptr;
+void (*frecord)(const Method* curMethod) = nullptr;
+
 jmethodID hookMethodID;
 jclass dumpMethodclazz;
-
+std::string recordFile, scheFile;
+int stDvmDex, stClass, stMethod;
 void ReadClassDataHeader(const uint8_t **pData, DexClassDataHeader *pHeader) {
     pHeader->staticFieldsSize = readUnsignedLeb128(pData);
     pHeader->instanceFieldsSize = readUnsignedLeb128(pData);
@@ -131,7 +141,7 @@ DvmDex* getdvmDex(int idx, const char *&dexName) {
     if (hashEntry->data == nullptr)
         return nullptr;
     if (!RWGuard::getInstance()->isReadable(reinterpret_cast<unsigned int>(hashEntry->data))) {
-        FLOGD("I Found an no empty hashEntry but it is not readable %d %08x", idx, hashEntry->data);
+        FLOGE("I Found an no empty hashEntry but it is not readable %d %08x", idx, hashEntry->data);
         return nullptr;
     }
     DvmDex *dvmDex = nullptr;
@@ -148,12 +158,12 @@ DvmDex* getdvmDex(int idx, const char *&dexName) {
     dexName = dexOrJar->fileName;
     return dvmDex;
 }
-void DumpClass(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
+void DumpClassbyDexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
     DexFile *pDexFile = pDvmDex->pDexFile;
-    Thread* self = fdvmThreadSelf();
+    Thread *self = fdvmThreadSelf();
 
     unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
-    for (size_t i = 0; i < num_class_defs; i++) {
+    for (int i = 0; i < num_class_defs; i++) {
         ClassObject *clazz = NULL;
         const u1 *data = NULL;
         DexClassData *pData = NULL;
@@ -165,7 +175,7 @@ void DumpClass(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
         const char *header = "Landroid";
         //如果是系统类，或者classDataOff为0，则跳过
         if (!strncmp(header, descriptor, 8) || !pClassDef->classDataOff) {
-            FLOGD("DexDump %s Landroid or classDataOff 0", descriptor);
+            FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
             continue;
         }
 
@@ -177,104 +187,120 @@ void DumpClass(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
         // 这里选择直接清空exception
         fdvmClearException(self);
 
-        if (!clazz)
-        {
-            FLOGD("DexDump defineClass %s failed", descriptor);
+        if (!clazz) {
+            FLOGE("DexDump defineClass %s failed", descriptor);
             continue;
         }
 
-        FLOGD("DexDump class: %s", descriptor);
+        FLOGE("DexDump class: %d  %s", i, descriptor);
 
-        if (!fdvmIsClassInitialized(clazz))
-        {
-            if (fdvmInitClass(clazz))
-            {
-                FLOGD("DexDump init: %s", descriptor);
+        if (!fdvmIsClassInitialized(clazz)) {
+            if (fdvmInitClass(clazz)) {
+                FLOGE("DexDump init: %s", descriptor);
             }
         }
 
-        gUpkInterface->reserved2 = (void *)(clazz);
-
-        jstring className = env->NewStringUTF(descriptor);
-        jboolean flag;
-        flag = env->CallStaticBooleanMethod(dumpMethodclazz,
-                                            hookMethodID,
-                                            className);
-        env->DeleteLocalRef(className);
-#if 0
         data = dexGetClassData(pDexFile, pClassDef);
 
         //返回DexClassData结构
         pData = ReadClassData(&data);
 
 
-        if (!pData)
-        {
-            FLOGD("DexDump ReadClassData %s failed", descriptor);
+        if (!pData) {
+            FLOGE("DexDump ReadClassData %s failed", descriptor);
             continue;
         }
 
-        if (pData->directMethods)
-        {
-            for (uint32_t i = 0; i < pData->header.directMethodsSize; i++) {
+        if (pData->directMethods) {
+            for (uint32_t j = 0; j < pData->header.directMethodsSize; j++) {
                 //从clazz来获取method，这里获取到的应该是真实信息
-                Method *method = &(clazz->directMethods[i]);
+                Method *method = &(clazz->directMethods[j]);
                 uint32_t ac = (method->accessFlags) & 0x3ffff;
+                if (!(ac & ACC_NATIVE))
+                    frecord(method);
+            }
+        }
+        if (pData->virtualMethods) {
+            for (uint32_t j = 0; j < pData->header.virtualMethodsSize; j++) {
+                //从clazz来获取method，这里获取到的应该是真实信息
+                Method *method = &(clazz->virtualMethods[j]);
+                uint32_t ac = (method->accessFlags) & 0x3ffff;
+                if (!(ac & ACC_NATIVE))
+                    frecord(method);
+            }
+        }
+    }
+}
+void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env, int numDvmDex) {
+    DexFile *pDexFile = pDvmDex->pDexFile;
+    Thread *self = fdvmThreadSelf();
 
-                FLOGD("DexDump direct method name %s.%s", descriptor, method->name);
+    unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
+    for (int i = stClass; i < num_class_defs; i++) {
+        //保存
+        //"/data/local/tmp/sche.txt"
 
-                //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
+        FILE *fp = fopen((char *) gUpkInterface->reserved1, "w");
+        fprintf(fp, "%d %d %d", numDvmDex, i, -1);
+        fflush(fp);
+        fclose(fp);
 
-                pData->directMethods[i].accessFlags = ac;
-                if (!method->insns) {
-                    //現在都是空了，反射調用的時候也會是空
-                    pData->directMethods[i].codeOff = 0;
-                }
-                if (ac & ACC_NATIVE) {
-                    FLOGD("NATIVE");
-                    //需要在java層進行反射調用
-                    jstring className = env->NewStringUTF(descriptor);
-                    jstring methodName = env->NewStringUTF(method->name);
-                    jboolean flag;
-                    flag = env->CallStaticBooleanMethod(dumpMethodclazz,
-                                                        hookMethodID,
-                                                        className,
-                                                        methodName
-                                                        );
-                    env->DeleteLocalRef(className);
-                }
+
+        ClassObject *clazz = NULL;
+        const u1 *data = NULL;
+        DexClassData *pData = NULL;
+        const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
+        const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
+
+        DexClassDef temp = *pClassDef;
+
+        const char *header = "Landroid";
+        //如果是系统类，或者classDataOff为0，则跳过
+        if (!strncmp(header, descriptor, 8) || !pClassDef->classDataOff) {
+            FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
+            continue;
+        }
+
+
+        fdvmClearException(self);
+        clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
+        // 当classLookUp抛出异常时，若没有进行处理就进入下一次lookUp，将导致dalvikAbort
+        // 具体见defineClassNative中的注释
+        // 这里选择直接清空exception
+        fdvmClearException(self);
+
+        if (!clazz) {
+            FLOGE("DexDump defineClass %s failed", descriptor);
+            continue;
+        }
+
+        FLOGE("DexDump class: %d  %s", i, descriptor);
+
+        if (!fdvmIsClassInitialized(clazz)) {
+            if (fdvmInitClass(clazz)) {
+                FLOGE("DexDump init: %s", descriptor);
             }
         }
 
-        if (pData->virtualMethods)
-        {
-            for (uint32_t i = 0; i < pData->header.virtualMethodsSize; i++) {
-                //从clazz来获取method，这里获取到的应该是真实信息
-                Method *method = &(clazz->virtualMethods[i]);
-                uint32_t ac = (method->accessFlags) & 0x3ffff;
+        gUpkInterface->reserved2 = (void *) (clazz);
 
-                FLOGD("DexDump virtual method name %s.%s", descriptor, method->name);
-
-                pData->virtualMethods[i].accessFlags = ac;
-                if (!method->insns) {
-                    //現在都是空了，反射調用的時候也會是空
-                    pData->virtualMethods[i].codeOff = 0;
-                }
-                if (ac & ACC_NATIVE) {
-                    FLOGD("NATIVE");
-                    //需要在java層進行反射調用
-                    jstring className = env->NewStringUTF(descriptor);
-                    jstring methodName = env->NewStringUTF(method->name);
-                    jboolean flag;
-                    flag = env->CallStaticBooleanMethod(dumpMethodclazz,
-                                                        hookMethodID,
-                                                        className,
-                                                        methodName);
-                    env->DeleteLocalRef(className);
-                }
-            }
-        }
-#endif
+        jstring className = env->NewStringUTF(descriptor);
+        jboolean flag;
+        if (numDvmDex == stDvmDex && i == stClass)
+            flag = env->CallStaticBooleanMethod(dumpMethodclazz,
+                                                hookMethodID,
+                                                className,
+                                                (jint) numDvmDex,
+                                                (jint) i,
+                                                (jint) stMethod);
+        else
+            flag = env->CallStaticBooleanMethod(dumpMethodclazz,
+                                                hookMethodID,
+                                                className,
+                                                (jint) numDvmDex,
+                                                (jint) i,
+                                                (jint) 0);
+        env->DeleteLocalRef(className);
     }
 }
 Object* searchClassLoader(DvmDex *pDvmDex){
@@ -287,7 +313,7 @@ Object* searchClassLoader(DvmDex *pDvmDex){
 
     if (numLiveEntries <= 0)
     {
-        FLOGD("DexDump searchClassLoader : No live entry");
+        FLOGE("DexDump searchClassLoader : No live entry");
         result = 0;
         goto bail;
     }
@@ -308,37 +334,92 @@ Object* searchClassLoader(DvmDex *pDvmDex){
     bail:
     dvmHashTableUnlock(GetloadedClasses());
     if(result == NULL){
-        FLOGD("DexDump could not find appropriate class loader");
+        FLOGE("DexDump could not find appropriate class loader");
     }
     else{
-        FLOGD("DexDump select classLoader : %#x", (unsigned int)result);
+        FLOGE("DexDump select classLoader : %#x", (unsigned int)result);
     }
     return result;
 }
-void unpackAll(JNIEnv* env, jobject obj, jstring folder) {
-    dumpMethodclazz = env->FindClass("android/app/fupk3/dumpMethod");
-    hookMethodID = env->GetStaticMethodID(dumpMethodclazz,
-                                          "hookMethod",
-                                          "(Ljava/lang/String;)Z");
-
-    FLOGD("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-
+void DexFileEntry(JNIEnv* env) {
+    FLOGE("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
     for (int i = 0; i < userDexFilesSize(); i++) {
         const char *name;
         auto pDvmDex = getdvmDex(i, name);
         if (pDvmDex == nullptr) {
-            FLOGD("dvmDex %d : nullptr", i);
+            FLOGE("dvmDex %d : nullptr", i);
             continue;
         }
 
-        FLOGD("dvmDex %d : %s", i, name);
+        FLOGE("dvmDex %d : %s", i, name);
 
         Object *loader = searchClassLoader(pDvmDex);
 
         if (loader == NULL)     continue;
         gUpkInterface->reserved3 = (void *)(loader);
-        DumpClass(pDvmDex, loader, env);
+        DumpClassbyDexFile(pDvmDex, loader, env);
     }
+}
+void InvokeEntry(JNIEnv* env) {
+    FLOGE("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ %d %d %d", stDvmDex, stClass, stMethod);
+    for (int i = stDvmDex; i < userDexFilesSize(); i++) {
+        const char *name;
+        auto pDvmDex = getdvmDex(i, name);
+        if (pDvmDex == nullptr) {
+            FLOGE("dvmDex %d : nullptr", i);
+            continue;
+        }
+
+        FLOGE("dvmDex %d : %s", i, name);
+
+        Object *loader = searchClassLoader(pDvmDex);
+
+        if (loader == NULL)     continue;
+        gUpkInterface->reserved3 = (void *)(loader);
+        DumpClassbyInovke(pDvmDex, loader, env, i);
+    }
+}
+void unpackAll(JNIEnv* env, jobject obj, jstring folder) {
+    dumpMethodclazz = env->FindClass("android/app/fupk3/dumpMethod");
+    hookMethodID = env->GetStaticMethodID(dumpMethodclazz,
+                                          "hookMethod",
+                                          "(Ljava/lang/String;III)Z");
+
+
+
+    std::string str = env->GetStringUTFChars(folder, nullptr);
+    recordFile = str + std::string("/record.txt");
+    scheFile = str + std::string("/sche.txt");
+    gUpkInterface->reserved0 = (void *)(recordFile.c_str());
+    gUpkInterface->reserved1 = (void *)(scheFile.c_str());
+    gUpkInterface->reserved4 = (void *)(str.c_str());
+
+    if (access((char *)gUpkInterface->reserved1, W_OK) == 0) {
+        FILE *fp = fopen((char *)gUpkInterface->reserved1, "r");
+        fscanf(fp, "%d %d %d", &stDvmDex, &stClass, &stMethod);
+        if (stMethod == -1) {
+            //init失敗
+            stClass++;
+            stMethod = 0;
+        }
+        else
+            stMethod++;
+        fclose(fp);
+    }
+    else {
+        stDvmDex = 0;
+        stClass = 0;
+        stMethod = 0;
+
+        DexFileEntry(env);
+    }
+
+    InvokeEntry(env);
+
+    //整個流程完成了
+    std::string finishfile = str + std::string("/finishdump.txt");
+    FILE *fp = fopen(finishfile.c_str(), "w");
+    fclose(fp);
     return;
 }
 bool init() {
@@ -378,25 +459,25 @@ bool init() {
     fdvmThreadSelf = (Thread *(*)())(dlsym(libdvm, "_Z13dvmThreadSelfv"));
     if (fdvmThreadSelf == nullptr)
         goto bail;
-    fupkInvokeMethod = (void (*)(const Method*))dlsym(libdvm, "fupkInvokeMethod");
-    if (fupkInvokeMethod == nullptr)
-        goto bail;
-    floadClassFromDex = (ClassObject* (*)(DvmDex*, const DexClassDef*, Object*)) dlsym(libdvm, "loadClassFromDex");
+    floadClassFromDex = (ClassObject* (*)(DvmDex*, const DexClassDef*, Object*))dlsym(libdvm, "loadClassFromDex");
     if (floadClassFromDex == nullptr)
+        goto bail;
+    frecord = (void (*)(const Method* curMethod))dlsym(libdvm, "_Z6recordPK6Method");
+    if (frecord == nullptr)
         goto bail;
 
     done = true;
 
     bail:
     if (!done) {
-        FLOGD("Unable to initlize are you sure you are run in the correct machine");
+        FLOGE("Unable to initlize are you sure you are run in the correct machine");
     }
     return done;
 }
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved)
 {
 
-    FLOGD("try to load unpack");
+    FLOGE("try to load unpack");
     JNIEnv *env = nullptr;
     jint result = -1;
 
@@ -417,10 +498,10 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved)
                              sizeof(natives)/sizeof(JNINativeMethod)) != JNI_OK) {
         env->ExceptionClear();
     }
-    FLOGD("unpack load success");
+    FLOGE("unpack load success");
 
     if (init())
-        FLOGD("init success");
+        FLOGE("init success");
 
     return JNI_VERSION_1_6;
 }

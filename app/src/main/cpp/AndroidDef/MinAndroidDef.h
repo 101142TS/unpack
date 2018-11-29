@@ -1,6 +1,6 @@
 //===------------------------------------------------------------*- C++ -*-===//
 //
-//                     Created by F8LEFT on 2017/6/8.
+//                     Created by 101142ts on 2017/6/8.
 //                   Copyright (c) 2017. All rights reserved.
 //===--------------------------------------------------------------------------
 //
@@ -20,7 +20,7 @@
 #define FLFMT TOSTR([%s:%d])
 
 #ifdef __ANDROID__
-#define FLOG_TAG "F8LEFT"
+#define FLOG_TAG "101142ts"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, FLOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, FLOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, FLOG_TAG, __VA_ARGS__)

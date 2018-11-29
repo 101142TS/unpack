@@ -9,7 +9,7 @@ import eu.chainfire.libsuperuser.Shell.OnCommandResultListener;
 
 //===-----------------------------------------------------------*- xxxx -*-===//
 //
-//                     Created by F8LEFT on 2018/4/4.
+//                     Created by 101142ts on 2018/4/4.
 //                   Copyright (c) 2018. All rights reserved.
 //===----------------------------------------------------------------------===//
 // Help to get root shell
