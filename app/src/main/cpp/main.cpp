@@ -39,8 +39,9 @@ void (*frecord)(const Method* curMethod) = nullptr;
 
 jmethodID hookMethodID;
 jclass dumpMethodclazz;
-std::string recordFile, scheFile;
-int stDvmDex, stClass, stMethod;
+
+std::string str;
+std::string recordFile, scheFile, logFile;
 void ReadClassDataHeader(const uint8_t **pData, DexClassDataHeader *pHeader) {
     pHeader->staticFieldsSize = readUnsignedLeb128(pData);
     pHeader->instanceFieldsSize = readUnsignedLeb128(pData);
@@ -158,12 +159,19 @@ DvmDex* getdvmDex(int idx, const char *&dexName) {
     dexName = dexOrJar->fileName;
     return dvmDex;
 }
-void DumpClassbyDexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
+void DumpClassbyDexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env, int stDvmDex, int stClass) {
     DexFile *pDexFile = pDvmDex->pDexFile;
     Thread *self = fdvmThreadSelf();
 
     unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
-    for (int i = 0; i < num_class_defs; i++) {
+    for (int i = stClass; i < num_class_defs; i++) {
+        std::string scheFile = str + std::string("/step1_sche.txt");
+        FILE *fp = fopen(scheFile.c_str(), "w");
+        fprintf(fp, "%d %d", stDvmDex, i);
+        fflush(fp);
+        fclose(fp);
+
+
         ClassObject *clazz = NULL;
         const u1 *data = NULL;
         DexClassData *pData = NULL;
@@ -198,12 +206,15 @@ void DumpClassbyDexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
 
         FLOGE("DexDump class: %d  %s", i, descriptor);
 
+        FLOGE("before check init");
         if (!fdvmIsClassInitialized(clazz)) {
+            FLOGE("before init");
             if (fdvmInitClass(clazz)) {
                 FLOGE("DexDump init: %s", descriptor);
             }
+            FLOGE("after init");
         }
-
+        FLOGE("after check init");
         data = dexGetClassData(pDexFile, pClassDef);
 
         //返回DexClassData结构
@@ -214,20 +225,31 @@ void DumpClassbyDexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
             FLOGE("DexDump ReadClassData %s failed", descriptor);
             continue;
         }
-
+        FLOGE("stack before");
         if (pData->directMethods) {
+            FLOGE("pData->header.directMethodsSize : %d", pData->header.directMethodsSize);
             for (uint32_t j = 0; j < pData->header.directMethodsSize; j++) {
                 //从clazz来获取method，这里获取到的应该是真实信息
+                FLOGE("stack %d", j);
+
                 Method *method = &(clazz->directMethods[j]);
+                if (method == NULL)
+                    continue;
                 uint32_t ac = (method->accessFlags) & 0x3ffff;
                 if (!(ac & ACC_NATIVE))
                     frecord(method);
             }
         }
         if (pData->virtualMethods) {
+            FLOGE("pData->header.virtualMethodsSize : %d", pData->header.virtualMethodsSize);
             for (uint32_t j = 0; j < pData->header.virtualMethodsSize; j++) {
                 //从clazz来获取method，这里获取到的应该是真实信息
+                FLOGE("stack %d", j);
+
+
                 Method *method = &(clazz->virtualMethods[j]);
+                if (method == NULL)
+                        continue;
                 uint32_t ac = (method->accessFlags) & 0x3ffff;
                 if (!(ac & ACC_NATIVE))
                     frecord(method);
@@ -235,17 +257,16 @@ void DumpClassbyDexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
         }
     }
 }
-void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env, int numDvmDex) {
+void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
+                       int stDvmDex, int stClass, int stMethod) {
     DexFile *pDexFile = pDvmDex->pDexFile;
     Thread *self = fdvmThreadSelf();
 
     unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
     for (int i = stClass; i < num_class_defs; i++) {
-        //保存
-        //"/data/local/tmp/sche.txt"
-
-        FILE *fp = fopen((char *) gUpkInterface->reserved1, "w");
-        fprintf(fp, "%d %d %d", numDvmDex, i, -1);
+        std::string scheFile = str + std::string("/step2_sche.txt");
+        FILE *fp = fopen(scheFile.c_str(), "w");
+        fprintf(fp, "%d %d %d", stDvmDex, i, -1);
         fflush(fp);
         fclose(fp);
 
@@ -290,25 +311,27 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env, int numDvmD
             }
         }
 
+        FLOGE("DexDump init: %s", descriptor);
         gUpkInterface->reserved2 = (void *) (clazz);
 
         jstring className = env->NewStringUTF(descriptor);
         jboolean flag;
-        if (numDvmDex == stDvmDex && i == stClass)
+        if (i == stClass)
             flag = env->CallStaticBooleanMethod(dumpMethodclazz,
                                                 hookMethodID,
                                                 className,
-                                                (jint) numDvmDex,
+                                                (jint) stDvmDex,
                                                 (jint) i,
                                                 (jint) stMethod);
         else
             flag = env->CallStaticBooleanMethod(dumpMethodclazz,
                                                 hookMethodID,
                                                 className,
-                                                (jint) numDvmDex,
+                                                (jint) stDvmDex,
                                                 (jint) i,
                                                 (jint) 0);
         env->DeleteLocalRef(className);
+
     }
 }
 Object* searchClassLoader(DvmDex *pDvmDex){
@@ -349,9 +372,9 @@ Object* searchClassLoader(DvmDex *pDvmDex){
     }
     return result;
 }
-void DexFileEntry(JNIEnv* env) {
-    FLOGE("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
-    for (int i = 0; i < userDexFilesSize(); i++) {
+void DexFileEntry(JNIEnv* env, int stDvmDex, int stClass) {
+    FLOGE("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ %d %d", stDvmDex, stClass);
+    for (int i = stDvmDex; i < userDexFilesSize(); i++) {
         const char *name;
         auto pDvmDex = getdvmDex(i, name);
         if (pDvmDex == nullptr) {
@@ -365,10 +388,18 @@ void DexFileEntry(JNIEnv* env) {
 
         if (loader == NULL)     continue;
         gUpkInterface->reserved3 = (void *)(loader);
-        DumpClassbyDexFile(pDvmDex, loader, env);
+
+        if (i == stDvmDex)
+            DumpClassbyDexFile(pDvmDex, loader, env, i, stClass);
+        else
+            DumpClassbyDexFile(pDvmDex, loader, env, i, 0);
     }
+    //流程1完成
+    std::string finishfile = str + std::string("/step1_OK.txt");
+    FILE *fp = fopen(finishfile.c_str(), "w");
+    fclose(fp);
 }
-void InvokeEntry(JNIEnv* env) {
+void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
     FLOGE("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ %d %d %d", stDvmDex, stClass, stMethod);
     for (int i = stDvmDex; i < userDexFilesSize(); i++) {
         const char *name;
@@ -384,50 +415,104 @@ void InvokeEntry(JNIEnv* env) {
 
         if (loader == NULL)     continue;
         gUpkInterface->reserved3 = (void *)(loader);
-        DumpClassbyInovke(pDvmDex, loader, env, i);
+
+        if (stDvmDex == i)
+            DumpClassbyInovke(pDvmDex, loader, env, i, stClass, stMethod);
+        else
+            DumpClassbyInovke(pDvmDex, loader, env, i, 0, 0);
     }
+    //流程2完成
+    std::string finishfile = str + std::string("/step2_OK.txt");
+    FILE *fp = fopen(finishfile.c_str(), "w");
+    fclose(fp);
 }
-void unpackAll(JNIEnv* env, jobject obj, jstring folder) {
+void init1(JNIEnv* env, jstring folder) {
+    /*  钩住系统中的java层,使得能在应用内部使用反射,
+     *  TODO: 可能在应用内部也行？
+     * */
     dumpMethodclazz = env->FindClass("android/app/fupk3/dumpMethod");
     hookMethodID = env->GetStaticMethodID(dumpMethodclazz,
                                           "hookMethod",
                                           "(Ljava/lang/String;III)Z");
-
-
-
-    std::string str = env->GetStringUTFChars(folder, nullptr);
+    /*
+     *  初始化各种文件和文件夹
+     *  step1_sche.txt用于记录强制反射调用到第几个dvmDex的第几个类的第几个方法
+     *  logFile.txt用于记录强制反射调用过程中出现的调用逻辑
+     *  record.txt用于记录强制反射调用过程中出现的所有方法
+     */
+    str = env->GetStringUTFChars(folder, nullptr);
     recordFile = str + std::string("/record.txt");
-    scheFile = str + std::string("/sche.txt");
+    scheFile = str + std::string("/step2_sche.txt");
+    logFile = str + std::string("/log.txt");
+
     gUpkInterface->reserved0 = (void *)(recordFile.c_str());
     gUpkInterface->reserved1 = (void *)(scheFile.c_str());
     gUpkInterface->reserved4 = (void *)(str.c_str());
+    gUpkInterface->reserved5 = (void *)(logFile.c_str());
+}
+void unpackAll(JNIEnv* env, jobject obj, jstring folder) {
+    FLOGE("in unpackAll");
 
-    if (access((char *)gUpkInterface->reserved1, W_OK) == 0) {
-        FILE *fp = fopen((char *)gUpkInterface->reserved1, "r");
-        fscanf(fp, "%d %d %d", &stDvmDex, &stClass, &stMethod);
-        if (stMethod == -1) {
-            //init失敗
-            stClass++;
-            stMethod = 0;
-        }
-        else
-            stMethod++;
+    init1(env, folder);
+
+    bool invokeFlag = true;             //step2Flag = true 表示执行step2
+    if (invokeFlag == false) {
+        //为保证脚本正常运行，这里设置伪完成flag
+        std::string finishfile = str + std::string("/step2_OK.txt");
+        FILE *fp = fopen(finishfile.c_str(), "w");
         fclose(fp);
     }
-    else {
-        stDvmDex = 0;
-        stClass = 0;
-        stMethod = 0;
+    /*
+     * 需要先执行完DexHunter的dump,再执行我的dump
+     * 完成DexHunter的dump后会在本地生成step1_OK.txt
+     */
+    std::string step1_OK = str + std::string("/step1_OK.txt");
+    if (access((char *)step1_OK.c_str(), W_OK) == 0 && invokeFlag == true) {
+        //存在
 
-        DexFileEntry(env);
+        std::string scheFile = str + std::string("/step2_sche.txt");
+        int stDvmDex, stClass, stMethod;
+        if (access(scheFile.c_str(), W_OK) == 0) {
+            //此前已有强制invoke的记录文件在
+            FILE *fp = fopen(scheFile.c_str(), "r");
+            fscanf(fp, "%d %d %d", &stDvmDex, &stClass, &stMethod);
+            if (stMethod == -1) {
+                //init失敗
+                stClass++;
+                stMethod = 0;
+            }
+            else
+                stMethod++;
+            fclose(fp);
+        }
+        else {
+            //没有
+            stDvmDex = 0;
+            stClass = 0;
+            stMethod = 0;
+        }
+
+        InvokeEntry(env, stDvmDex, stClass, stMethod);
     }
+    else {
+        //不存在
 
-    InvokeEntry(env);
-
-    //整個流程完成了
-    std::string finishfile = str + std::string("/finishdump.txt");
-    FILE *fp = fopen(finishfile.c_str(), "w");
-    fclose(fp);
+        std::string scheFile = str + std::string("/step1_sche.txt");
+        int stDvmDex, stClass;
+        if (access(scheFile.c_str(), W_OK) == 0) {
+            //此前已有dexhunter处理方法的记录文件在
+            FILE *fp = fopen(scheFile.c_str(), "r");
+            fscanf(fp, "%d %d", &stDvmDex, &stClass);
+            stClass++;
+            fclose(fp);
+        }
+        else {
+            //没有
+            stDvmDex = 0;
+            stClass = 0;
+        }
+        DexFileEntry(env, stDvmDex, stClass);
+    }
     return;
 }
 bool init() {
