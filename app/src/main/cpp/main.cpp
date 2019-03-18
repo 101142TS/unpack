@@ -22,6 +22,7 @@ struct FupkInterface {
     void* reserved4;
     void* reserved5;
     void* reserved6;
+    void* reserved7;
 };
 FupkInterface* gUpkInterface;
 HashTable* userDexFiles = nullptr;
@@ -35,12 +36,12 @@ void (*fdvmClearException)(Thread* self) = nullptr;
 ClassObject* (*fdvmDefineClass)(DvmDex* pDvmDex, const char* descriptor, Object* classLoader) = nullptr;
 bool (*fdvmIsClassInitialized)(const ClassObject* clazz) = nullptr;
 bool (*fdvmInitClass)(ClassObject* clazz) = nullptr;
-void (*frecord)(const Method* curMethod) = nullptr;
 
 jmethodID hookMethodID;
 jclass dumpMethodclazz;
 
 std::string str;
+std::string nowdir;
 std::string recordFile, scheFile, logFile;
 void ReadClassDataHeader(const uint8_t **pData, DexClassDataHeader *pHeader) {
     pHeader->staticFieldsSize = readUnsignedLeb128(pData);
@@ -159,102 +160,35 @@ DvmDex* getdvmDex(int idx, const char *&dexName) {
     dexName = dexOrJar->fileName;
     return dvmDex;
 }
-void DumpClassbyDexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env, int stDvmDex, int stClass) {
+void mkdir_DexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
     DexFile *pDexFile = pDvmDex->pDexFile;
-    Thread *self = fdvmThreadSelf();
-
     unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
-    for (int i = stClass; i < num_class_defs; i++) {
-        std::string scheFile = str + std::string("/step1_sche.txt");
-        FILE *fp = fopen(scheFile.c_str(), "w");
-        fprintf(fp, "%d %d", stDvmDex, i);
-        fflush(fp);
-        fclose(fp);
-
-
-        ClassObject *clazz = NULL;
-        const u1 *data = NULL;
-        DexClassData *pData = NULL;
+    for (int i = 0; i < num_class_defs; i++) {
         const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
         const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
-
-        DexClassDef temp = *pClassDef;
 
         const char *header1 = "Landroid";
         const char *header2 = "Ldalvik";
         const char *header3 = "Ljava";
         const char *header4 = "Llibcore";
-        //如果是系统类，或者classDataOff为0，则跳过
+        //如果是系统类，则跳过
         if (!strncmp(header1, descriptor, strlen(header1)) ||
-            !pClassDef->classDataOff) {
-            FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
+            !strncmp(header2, descriptor, strlen(header2)) ||
+            !strncmp(header3, descriptor, strlen(header3)) ||
+            !strncmp(header4, descriptor, strlen(header4))) {
             continue;
         }
 
-
-        fdvmClearException(self);
-        clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
-        // 当classLookUp抛出异常时，若没有进行处理就进入下一次lookUp，将导致dalvikAbort
-        // 具体见defineClassNative中的注释
-        // 这里选择直接清空exception
-        fdvmClearException(self);
-
-        if (!clazz) {
-            FLOGE("DexDump defineClass %s failed", descriptor);
-            continue;
-        }
-
-        FLOGE("DexDump class: %d  %s", i, descriptor);
-
-        FLOGE("before check init");
-        if (!fdvmIsClassInitialized(clazz)) {
-            FLOGE("before init");
-            if (fdvmInitClass(clazz)) {
-                FLOGE("DexDump init: %s", descriptor);
+        std::string itdir = nowdir;
+        int ln = strlen(descriptor);
+        for (int i = 0; i < ln - 1; i++) {
+            if (descriptor[i] == '/') {
+                mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
             }
-            FLOGE("after init");
+            itdir.push_back(descriptor[i]);
         }
-        FLOGE("after check init");
-        data = dexGetClassData(pDexFile, pClassDef);
+        mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-        //返回DexClassData结构
-        pData = ReadClassData(&data);
-
-
-        if (!pData) {
-            FLOGE("DexDump ReadClassData %s failed", descriptor);
-            continue;
-        }
-        FLOGE("stack before");
-        if (pData->directMethods) {
-            FLOGE("pData->header.directMethodsSize : %d", pData->header.directMethodsSize);
-            for (uint32_t j = 0; j < pData->header.directMethodsSize; j++) {
-                //从clazz来获取method，这里获取到的应该是真实信息
-                FLOGE("stack %d", j);
-
-                Method *method = &(clazz->directMethods[j]);
-                if (method == NULL)
-                    continue;
-                uint32_t ac = (method->accessFlags) & 0x3ffff;
-                if (!(ac & ACC_NATIVE))
-                    frecord(method);
-            }
-        }
-        if (pData->virtualMethods) {
-            FLOGE("pData->header.virtualMethodsSize : %d", pData->header.virtualMethodsSize);
-            for (uint32_t j = 0; j < pData->header.virtualMethodsSize; j++) {
-                //从clazz来获取method，这里获取到的应该是真实信息
-                FLOGE("stack %d", j);
-
-
-                Method *method = &(clazz->virtualMethods[j]);
-                if (method == NULL)
-                        continue;
-                uint32_t ac = (method->accessFlags) & 0x3ffff;
-                if (!(ac & ACC_NATIVE))
-                    frecord(method);
-            }
-        }
     }
 }
 void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
@@ -264,32 +198,57 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
 
     unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
     for (int i = stClass; i < num_class_defs; i++) {
-        std::string scheFile = str + std::string("/step2_sche.txt");
+        /*
+         * 有可能在定义类或者类初始化的时候崩掉，下次就不经过这个类了
+         */
+        std::string scheFile = str + std::string("/sche.txt");
         FILE *fp = fopen(scheFile.c_str(), "w");
-        fprintf(fp, "%d %d %d", stDvmDex, i, -1);
+        fprintf(fp, "%d %d %d\n", stDvmDex, i, -1);
         fflush(fp);
         fclose(fp);
 
 
         ClassObject *clazz = NULL;
-        const u1 *data = NULL;
-        DexClassData *pData = NULL;
         const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
         const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
 
-        DexClassDef temp = *pClassDef;
+#if 0
+        /*
+        if (strcmp(descriptor, "Lcom/whty/activity/login/NewPhoneRegistActivity$10$1$1;") != 0) {
+            continue;
+        }
+        */
 
+        if (strcmp(descriptor, "Lorg/apache/http/conn/scheme/Scheme;") != 0)
+            continue;
+
+#endif
+        FLOGE("DexDump class: %d  %s", i, descriptor);
         const char *header1 = "Landroid";
         const char *header2 = "Ldalvik";
         const char *header3 = "Ljava";
         const char *header4 = "Llibcore";
         //如果是系统类，或者classDataOff为0，则跳过
         if (!strncmp(header1, descriptor, strlen(header1)) ||
+            !strncmp(header2, descriptor, strlen(header2)) ||
+            !strncmp(header3, descriptor, strlen(header3)) ||
+            !strncmp(header4, descriptor, strlen(header4)) ||
             !pClassDef->classDataOff) {
             FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
             continue;
         }
 
+
+        /*
+         * 每个类下面新建一个log.txt，用来记录这个类下的所有方法调用时的信息
+         */
+        std::string itdir = nowdir;
+        int ln = strlen(descriptor);
+        for (int i = 0; i < ln - 1; i++) {
+            itdir.push_back(descriptor[i]);
+        }
+        itdir = itdir + "/" + "log.txt";
+        gUpkInterface->reserved7 = (void *) (itdir.c_str());
 
         fdvmClearException(self);
         clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
@@ -303,8 +262,6 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
             continue;
         }
 
-        FLOGE("DexDump class: %d  %s", i, descriptor);
-
         if (!fdvmIsClassInitialized(clazz)) {
             if (fdvmInitClass(clazz)) {
                 FLOGE("DexDump init: %s", descriptor);
@@ -313,6 +270,14 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
 
         FLOGE("DexDump init: %s", descriptor);
         gUpkInterface->reserved2 = (void *) (clazz);
+
+        /*
+         * 在record.txt中可看到所有类名
+         */
+        fp = fopen((const char *)gUpkInterface->reserved0, "a");
+        fprintf(fp, "%s\n", descriptor);
+        fflush(fp);
+        fclose(fp);
 
         jstring className = env->NewStringUTF(descriptor);
         jboolean flag;
@@ -372,39 +337,44 @@ Object* searchClassLoader(DvmDex *pDvmDex){
     }
     return result;
 }
-void DexFileEntry(JNIEnv* env, int stDvmDex, int stClass) {
-    FLOGE("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ %d %d", stDvmDex, stClass);
-    for (int i = stDvmDex; i < userDexFilesSize(); i++) {
-        const char *name;
-        auto pDvmDex = getdvmDex(i, name);
-        if (pDvmDex == nullptr) {
-            FLOGE("dvmDex %d : nullptr", i);
-            continue;
-        }
+void itoa(char *buf, u4 d) {
+    memset(buf, 0, sizeof(buf));
+    char *p = buf;
+    char *p1, *p2;
+    u4 ud = d;
+    int divisor = 10;
 
-        FLOGE("dvmDex %d : %s", i, name);
-
-        Object *loader = searchClassLoader(pDvmDex);
-
-        if (loader == NULL)     continue;
-        gUpkInterface->reserved3 = (void *)(loader);
-
-        if (i == stDvmDex)
-            DumpClassbyDexFile(pDvmDex, loader, env, i, stClass);
-        else
-            DumpClassbyDexFile(pDvmDex, loader, env, i, 0);
+    do {
+        *p++ = (ud % divisor) + '0';
     }
-    //流程1完成
-    std::string finishfile = str + std::string("/step1_OK.txt");
-    FILE *fp = fopen(finishfile.c_str(), "w");
-    fclose(fp);
+    while (ud /= divisor);
+
+    /* Terminate BUF.  */
+    *p = 0;
+
+    /* Reverse BUF.  */
+    p1 = buf;
+    p2 = p - 1;
+    while (p1 < p2) {
+        char tmp = *p1;
+        *p1 = *p2;
+        *p2 = tmp;
+        p1++;
+        p2--;
+    }
 }
 void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
     FLOGE("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ %d %d %d", stDvmDex, stClass, stMethod);
+
+    nowdir = str + "/code/";
     for (int i = stDvmDex; i < userDexFilesSize(); i++) {
         const char *name;
         auto pDvmDex = getdvmDex(i, name);
         if (pDvmDex == nullptr) {
+            if (stDvmDex == i && (stClass != 0 || stMethod != 0)) {
+                FLOGE("Error !! dvmDex %d : change to nullptr", i);
+                return;
+            }
             FLOGE("dvmDex %d : nullptr", i);
             continue;
         }
@@ -413,7 +383,13 @@ void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
 
         Object *loader = searchClassLoader(pDvmDex);
 
-        if (loader == NULL)     continue;
+        if (loader == NULL) {
+            if (stDvmDex == i && (stClass != 0 || stMethod != 0)) {
+                FLOGE("Error !! loader %d : change to NULL", i);
+                return;
+            }
+            continue;
+        }
         gUpkInterface->reserved3 = (void *)(loader);
 
         if (stDvmDex == i)
@@ -422,9 +398,28 @@ void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
             DumpClassbyInovke(pDvmDex, loader, env, i, 0, 0);
     }
     //流程2完成
-    std::string finishfile = str + std::string("/step2_OK.txt");
+    std::string finishfile = str + std::string("/OK.txt");
     FILE *fp = fopen(finishfile.c_str(), "w");
     fclose(fp);
+}
+void mkdir_DvmDex(JNIEnv* env) {
+    nowdir = str + "/code/";
+    mkdir(nowdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+    for (int i = 0; i < userDexFilesSize(); i++) {
+        const char *name;
+        auto pDvmDex = getdvmDex(i, name);
+        if (pDvmDex == nullptr) {
+            continue;
+        }
+
+        Object *loader = searchClassLoader(pDvmDex);
+
+        if (loader == NULL)     continue;
+        gUpkInterface->reserved3 = (void *)(loader);
+
+        mkdir_DexFile(pDvmDex, loader, env);
+    }
 }
 void init1(JNIEnv* env, jstring folder) {
     /*  钩住系统中的java层,使得能在应用内部使用反射,
@@ -436,83 +431,71 @@ void init1(JNIEnv* env, jstring folder) {
                                           "(Ljava/lang/String;III)Z");
     /*
      *  初始化各种文件和文件夹
-     *  step1_sche.txt用于记录强制反射调用到第几个dvmDex的第几个类的第几个方法
+     *  sche.txt用于记录强制反射调用到第几个dvmDex的第几个类的第几个方法
      *  logFile.txt用于记录强制反射调用过程中出现的调用逻辑
      *  record.txt用于记录强制反射调用过程中出现的所有方法
      */
     str = env->GetStringUTFChars(folder, nullptr);
+    str = str + std::string("/101142ts");
     recordFile = str + std::string("/record.txt");
-    scheFile = str + std::string("/step2_sche.txt");
+    scheFile = str + std::string("/sche.txt");
     logFile = str + std::string("/log.txt");
 
     gUpkInterface->reserved0 = (void *)(recordFile.c_str());
     gUpkInterface->reserved1 = (void *)(scheFile.c_str());
     gUpkInterface->reserved4 = (void *)(str.c_str());
     gUpkInterface->reserved5 = (void *)(logFile.c_str());
+
 }
-void unpackAll(JNIEnv* env, jobject obj, jstring folder) {
+void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     FLOGE("in unpackAll");
-
     init1(env, folder);
+    std::string tidFile = str + std::string("/tid.txt");
 
-    bool invokeFlag = true;             //step2Flag = true 表示执行step2
-    if (invokeFlag == false) {
-        //为保证脚本正常运行，这里设置伪完成flag
-        std::string finishfile = str + std::string("/step2_OK.txt");
-        FILE *fp = fopen(finishfile.c_str(), "w");
+    {
+        FILE *fp = fopen(tidFile.c_str(), "w");
+        fprintf(fp, "%d\n", gettid());
+        fflush(fp);
         fclose(fp);
     }
+    sleep((int)millis);
     /*
-     * 需要先执行完DexHunter的dump,再执行我的dump
-     * 完成DexHunter的dump后会在本地生成step1_OK.txt
+     * 开始dump的流程，这个流程可能是第一次执行，也可能不是
      */
-    std::string step1_OK = str + std::string("/step1_OK.txt");
-    if (access((char *)step1_OK.c_str(), W_OK) == 0 && invokeFlag == true) {
-        //存在
+    std::string scheFile = str + std::string("/sche.txt");
 
-        std::string scheFile = str + std::string("/step2_sche.txt");
-        int stDvmDex, stClass, stMethod;
-        if (access(scheFile.c_str(), W_OK) == 0) {
-            //此前已有强制invoke的记录文件在
-            FILE *fp = fopen(scheFile.c_str(), "r");
-            fscanf(fp, "%d %d %d", &stDvmDex, &stClass, &stMethod);
-            if (stMethod == -1) {
-                //init失敗
-                stClass++;
-                stMethod = 0;
-            }
-            else
-                stMethod++;
-            fclose(fp);
-        }
-        else {
-            //没有
-            stDvmDex = 0;
-            stClass = 0;
-            stMethod = 0;
-        }
-
-        InvokeEntry(env, stDvmDex, stClass, stMethod);
+    if (access(scheFile.c_str(), W_OK) != 0) {
+        FLOGE("ERROR: no sche");
+        return;
     }
-    else {
-        //不存在
+    std::string makeup = str + std::string("/makeup");
+    if (access(makeup.c_str(), W_OK) != 0) {
+        sleep(10);
+        mkdir_DvmDex(env);
+        FILE *fp = fopen(makeup.c_str(), "w");
+        fprintf(fp, "YES\n");
+        fflush(fp);
+        fclose(fp);
 
-        std::string scheFile = str + std::string("/step1_sche.txt");
-        int stDvmDex, stClass;
-        if (access(scheFile.c_str(), W_OK) == 0) {
-            //此前已有dexhunter处理方法的记录文件在
-            FILE *fp = fopen(scheFile.c_str(), "r");
-            fscanf(fp, "%d %d", &stDvmDex, &stClass);
-            stClass++;
-            fclose(fp);
-        }
-        else {
-            //没有
-            stDvmDex = 0;
-            stClass = 0;
-        }
-        DexFileEntry(env, stDvmDex, stClass);
     }
+    int stDvmDex, stClass, stMethod;
+    /*
+     * 下一次强制调用从stDvmDex, stClass, stMethod开始
+     */
+
+    FILE *fp = fopen(scheFile.c_str(), "r");
+    fscanf(fp, "%d %d %d", &stDvmDex, &stClass, &stMethod);
+    if (stMethod == -1) {
+        //init失敗
+        stClass++;
+        stMethod = 0;
+    }
+    else
+        stMethod++;
+    fclose(fp);
+
+    InvokeEntry(env, stDvmDex, stClass, stMethod);
+
     return;
 }
 bool init() {
@@ -555,9 +538,6 @@ bool init() {
     floadClassFromDex = (ClassObject* (*)(DvmDex*, const DexClassDef*, Object*))dlsym(libdvm, "loadClassFromDex");
     if (floadClassFromDex == nullptr)
         goto bail;
-    frecord = (void (*)(const Method* curMethod))dlsym(libdvm, "_Z6recordPK6Method");
-    if (frecord == nullptr)
-        goto bail;
 
     done = true;
 
@@ -569,7 +549,6 @@ bool init() {
 }
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved)
 {
-
     FLOGE("try to load unpack");
     JNIEnv *env = nullptr;
     jint result = -1;
@@ -580,12 +559,10 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved)
         return JNI_VERSION_1_6;
     }
 
-    bool regsuccess = false;
-
     auto clazz = env->FindClass("android/app/fupk3/Fupk");
 
     JNINativeMethod natives[] = {
-            {"unpackAll", "(Ljava/lang/String;)V", (void*)unpackAll}
+            {"unpackAll", "(Ljava/lang/String;I)V", (void*)unpackAll}
     };
     if (env->RegisterNatives(clazz, natives,
                              sizeof(natives)/sizeof(JNINativeMethod)) != JNI_OK) {
