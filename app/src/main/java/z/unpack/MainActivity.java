@@ -14,14 +14,20 @@ import java.io.FileWriter;
 public class MainActivity extends AppCompatActivity {
     public final static String hookSo = "/data/local/tmp/libunpack.so";
     public final static String hookFile = "/data/local/tmp/unpack.txt";
+    public final static int mWaitingTime = 1;
+    public final static int mMode = 0;
 
     public MainActivity() {
         super();
     }
-    public final static String mTargetPackage = "cl.coders.faketraveler";
+
+    //public final static String mTargetPackage = "cjj.sthfornoth";
+    //public final static String mTargetPackage = "com.whty.wicity.china";
+    public final static String mTargetPackage = "com.tencent.android.qqdownloader";
+    //public final static String mTargetPackage = "cl.coders.faketraveler";
     //public final static String mTargetPackage = "com.example.simple";
-    public final static String mTargetApplication = "????";
-    public final static String mTargetActivity = "?????";
+    //public final static String mTargetPackage = "com.uberspot.a2048";
+    //public final static String mTargetPackage = "jjjj.z";
     static {
         System.loadLibrary("unpack");
     }
@@ -90,7 +96,9 @@ public class MainActivity extends AppCompatActivity {
             FileWriter writer = new FileWriter(file);
             BufferedWriter wr = new BufferedWriter(writer);
             wr.write(mTargetPackage + "\n");
-            //wr.write(mTargetApplication + "\n");
+            wr.write("unpack" + "\n");
+            wr.write(String.valueOf(mWaitingTime) + "\n");
+            wr.write(String.valueOf(mMode) + "\n");
             //wr.write(mTargetActivity + "\n");
             wr.close();
             writer.close();
