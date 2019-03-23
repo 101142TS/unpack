@@ -14,6 +14,12 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+# define mywrite(filename, ...) do {                                                        \
+        FILE *fp = fopen(filename.c_str(), "w");                                            \
+        fprintf(fp, __VA_ARGS__);                                                           \
+        fflush(fp);                                                                         \
+        fclose(fp);                                                                         \
+    } while(false)
 struct FupkInterface {
     void* reserved0;
     void* reserved1;
@@ -42,7 +48,9 @@ jclass dumpMethodclazz;
 
 std::string str;
 std::string nowdir;
-std::string recordFile, scheFile, logFile;
+std::string recordFile, scheFile, logFile, dvmFile;
+int tot_dvm;
+std::string DvmName[50];
 void ReadClassDataHeader(const uint8_t **pData, DexClassDataHeader *pHeader) {
     pHeader->staticFieldsSize = readUnsignedLeb128(pData);
     pHeader->instanceFieldsSize = readUnsignedLeb128(pData);
@@ -202,27 +210,20 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
          * 有可能在定义类或者类初始化的时候崩掉，下次就不经过这个类了
          */
         std::string scheFile = str + std::string("/sche.txt");
-        FILE *fp = fopen(scheFile.c_str(), "w");
-        fprintf(fp, "%d %d %d\n", stDvmDex, i, -1);
-        fflush(fp);
-        fclose(fp);
-
+        mywrite(scheFile, "%d %d %d\n", stDvmDex, i, -1);
 
         ClassObject *clazz = NULL;
         const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
         const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
 
-#if 0
+
         /*
-        if (strcmp(descriptor, "Lcom/whty/activity/login/NewPhoneRegistActivity$10$1$1;") != 0) {
+        if (strcmp(descriptor, "Lcn/jiguang/wakesdk/a/d/c/a") != 0) {
             continue;
         }
         */
 
-        if (strcmp(descriptor, "Lorg/apache/http/conn/scheme/Scheme;") != 0)
-            continue;
 
-#endif
         FLOGE("DexDump class: %d  %s", i, descriptor);
         const char *header1 = "Landroid";
         const char *header2 = "Ldalvik";
@@ -274,10 +275,13 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
         /*
          * 在record.txt中可看到所有类名
          */
-        fp = fopen((const char *)gUpkInterface->reserved0, "a");
-        fprintf(fp, "%s\n", descriptor);
-        fflush(fp);
-        fclose(fp);
+        {
+
+            FILE *fp = fopen((const char *) gUpkInterface->reserved0, "a");
+            fprintf(fp, "%s\n", descriptor);
+            fflush(fp);
+            fclose(fp);
+        }
 
         jstring className = env->NewStringUTF(descriptor);
         jboolean flag;
@@ -365,44 +369,42 @@ void itoa(char *buf, u4 d) {
 }
 void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
     FLOGE("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ %d %d %d", stDvmDex, stClass, stMethod);
-
+    DvmDex* pDvmDex;
+    Object *loader;
     nowdir = str + "/code/";
-    for (int i = stDvmDex; i < userDexFilesSize(); i++) {
+    int dexSize = userDexFilesSize();
+
+    bool ready = false;
+    for (int i = 0; i < dexSize; i++) {
         const char *name;
-        auto pDvmDex = getdvmDex(i, name);
+        pDvmDex = getdvmDex(i, name);
         if (pDvmDex == nullptr) {
-            if (stDvmDex == i && (stClass != 0 || stMethod != 0)) {
-                FLOGE("Error !! dvmDex %d : change to nullptr", i);
-                return;
-            }
-            FLOGE("dvmDex %d : nullptr", i);
             continue;
         }
 
-        FLOGE("dvmDex %d : %s", i, name);
+        loader = searchClassLoader(pDvmDex);
 
-        Object *loader = searchClassLoader(pDvmDex);
+        if (loader == NULL)     continue;
 
-        if (loader == NULL) {
-            if (stDvmDex == i && (stClass != 0 || stMethod != 0)) {
-                FLOGE("Error !! loader %d : change to NULL", i);
-                return;
-            }
-            continue;
+        if (std::string(name) == DvmName[stDvmDex]) {
+            ready = true;
+            break;
         }
-        gUpkInterface->reserved3 = (void *)(loader);
-
-        if (stDvmDex == i)
-            DumpClassbyInovke(pDvmDex, loader, env, i, stClass, stMethod);
-        else
-            DumpClassbyInovke(pDvmDex, loader, env, i, 0, 0);
     }
-    //流程2完成
-    std::string finishfile = str + std::string("/OK.txt");
-    FILE *fp = fopen(finishfile.c_str(), "w");
-    fclose(fp);
+
+    if (ready) {
+        FLOGE("dvmDex found");
+        DumpClassbyInovke(pDvmDex, loader, env, stDvmDex, stClass, stMethod);
+        mywrite(scheFile, "%d -1 -1", stDvmDex + 1);
+        return;
+    }
+    else {
+        FLOGE("ERROR : dvmDex not found!");
+    }
+    return;
 }
 void mkdir_DvmDex(JNIEnv* env) {
+
     nowdir = str + "/code/";
     mkdir(nowdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
@@ -416,6 +418,12 @@ void mkdir_DvmDex(JNIEnv* env) {
         Object *loader = searchClassLoader(pDvmDex);
 
         if (loader == NULL)     continue;
+
+        FILE *fp = fopen(dvmFile.c_str(), "a");
+        fprintf(fp, "%s\n", name);
+        fflush(fp);
+        fclose(fp);
+
         gUpkInterface->reserved3 = (void *)(loader);
 
         mkdir_DexFile(pDvmDex, loader, env);
@@ -440,6 +448,7 @@ void init1(JNIEnv* env, jstring folder) {
     recordFile = str + std::string("/record.txt");
     scheFile = str + std::string("/sche.txt");
     logFile = str + std::string("/log.txt");
+    dvmFile = str + std::string("/dvmName.txt");
 
     gUpkInterface->reserved0 = (void *)(recordFile.c_str());
     gUpkInterface->reserved1 = (void *)(scheFile.c_str());
@@ -452,12 +461,8 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     init1(env, folder);
     std::string tidFile = str + std::string("/tid.txt");
 
-    {
-        FILE *fp = fopen(tidFile.c_str(), "w");
-        fprintf(fp, "%d\n", gettid());
-        fflush(fp);
-        fclose(fp);
-    }
+    mywrite(tidFile, "%d\n", gettid());
+
     sleep((int)millis);
     /*
      * 开始dump的流程，这个流程可能是第一次执行，也可能不是
@@ -470,13 +475,20 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     }
     std::string makeup = str + std::string("/makeup");
     if (access(makeup.c_str(), W_OK) != 0) {
+        //第一次流程的时候要记录能dump的文件名
         sleep(10);
         mkdir_DvmDex(env);
-        FILE *fp = fopen(makeup.c_str(), "w");
-        fprintf(fp, "YES\n");
-        fflush(fp);
+        mywrite(makeup, "YES\n");
+    }
+    {
+        FILE *fp = fopen(dvmFile.c_str(), "r");
+        tot_dvm = 0;
+        char s[1000];
+        while (fscanf(fp, "%s", s) != EOF) {
+            DvmName[tot_dvm] = std::string(s);
+            tot_dvm++;
+        }
         fclose(fp);
-
     }
     int stDvmDex, stClass, stMethod;
     /*
@@ -494,8 +506,14 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
         stMethod++;
     fclose(fp);
 
-    InvokeEntry(env, stDvmDex, stClass, stMethod);
-
+    if (stDvmDex == tot_dvm) {
+        //dump结束了
+        std::string finishfile = str + std::string("/OK.txt");
+        mywrite(finishfile, "\n");
+    }
+    else {
+        InvokeEntry(env, stDvmDex, stClass, stMethod);
+    }
     return;
 }
 bool init() {

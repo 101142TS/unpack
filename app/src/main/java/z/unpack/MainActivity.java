@@ -14,18 +14,20 @@ import java.io.FileWriter;
 public class MainActivity extends AppCompatActivity {
     public final static String hookSo = "/data/local/tmp/libunpack.so";
     public final static String hookFile = "/data/local/tmp/unpack.txt";
-    public final static int mWaitingTime = 1;
+    public final static int mWaitingTime = 3;
     public final static int mMode = 0;
 
     public MainActivity() {
         super();
     }
 
-    //public final static String mTargetPackage = "cjj.sthfornoth";
+    //public final static String mTargetPackage = "com.mogujie";
     //public final static String mTargetPackage = "com.whty.wicity.china";
-    public final static String mTargetPackage = "com.tencent.android.qqdownloader";
+    //public final static String mTargetPackage = "com.tencent.android.qqdownloader";
     //public final static String mTargetPackage = "cl.coders.faketraveler";
     //public final static String mTargetPackage = "com.example.simple";
+    //public final static String mTargetPackage = "com.tencent.mtt";
+    public final static String mTargetPackage = "com.tencent.mobileqq";
     //public final static String mTargetPackage = "com.uberspot.a2048";
     //public final static String mTargetPackage = "jjjj.z";
     static {
