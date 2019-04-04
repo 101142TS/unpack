@@ -50,7 +50,7 @@ std::string str;
 std::string nowdir;
 std::string recordFile, scheFile, logFile, dvmFile;
 int tot_dvm;
-std::string DvmName[50];
+u4 DvmName[50];
 void ReadClassDataHeader(const uint8_t **pData, DexClassDataHeader *pHeader) {
     pHeader->staticFieldsSize = readUnsignedLeb128(pData);
     pHeader->instanceFieldsSize = readUnsignedLeb128(pData);
@@ -217,14 +217,8 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
         const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
 
 
-        /*
-        if (strcmp(descriptor, "Lcn/jiguang/wakesdk/a/d/c/a") != 0) {
-            continue;
-        }
-        */
-
-
         FLOGE("DexDump class: %d  %s", i, descriptor);
+
         const char *header1 = "Landroid";
         const char *header2 = "Ldalvik";
         const char *header3 = "Ljava";
@@ -263,13 +257,19 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
             continue;
         }
 
+#if 0
         if (!fdvmIsClassInitialized(clazz)) {
             if (fdvmInitClass(clazz)) {
                 FLOGE("DexDump init: %s", descriptor);
+            } else {
+                FLOGE("DexDump init failed: %s", descriptor);
             }
         }
+        else {
+            FLOGE("DexDump inited: %s", descriptor);
+        }
+#endif
 
-        FLOGE("DexDump init: %s", descriptor);
         gUpkInterface->reserved2 = (void *) (clazz);
 
         /*
@@ -369,6 +369,11 @@ void itoa(char *buf, u4 d) {
 }
 void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
     FLOGE("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ %d %d %d", stDvmDex, stClass, stMethod);
+    //////
+    for (int i = 0; i < tot_dvm; i++) {
+        FLOGE("DvmName %d : %u", i, DvmName[i]);
+    }
+    //////
     DvmDex* pDvmDex;
     Object *loader;
     nowdir = str + "/code/";
@@ -385,8 +390,8 @@ void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
         loader = searchClassLoader(pDvmDex);
 
         if (loader == NULL)     continue;
-
-        if (std::string(name) == DvmName[stDvmDex]) {
+        FLOGE("pDvmDex %d : %u", i, pDvmDex->pDexFile->pHeader->classDefsSize);
+        if (pDvmDex->pDexFile->pHeader->classDefsSize == DvmName[stDvmDex]) {
             ready = true;
             break;
         }
@@ -420,7 +425,7 @@ void mkdir_DvmDex(JNIEnv* env) {
         if (loader == NULL)     continue;
 
         FILE *fp = fopen(dvmFile.c_str(), "a");
-        fprintf(fp, "%s\n", name);
+        fprintf(fp, "%u\n", pDvmDex->pDexFile->pHeader->classDefsSize);
         fflush(fp);
         fclose(fp);
 
@@ -460,7 +465,8 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     FLOGE("in unpackAll");
     init1(env, folder);
     std::string tidFile = str + std::string("/tid.txt");
-
+    FLOGE("tid = %d",  gettid());
+    FLOGE("tidFile = %s",  tidFile.c_str());
     mywrite(tidFile, "%d\n", gettid());
 
     sleep((int)millis);
@@ -483,9 +489,9 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     {
         FILE *fp = fopen(dvmFile.c_str(), "r");
         tot_dvm = 0;
-        char s[1000];
-        while (fscanf(fp, "%s", s) != EOF) {
-            DvmName[tot_dvm] = std::string(s);
+        u4 classDefsSize;
+        while (fscanf(fp, "%u", &classDefsSize) != EOF) {
+            DvmName[tot_dvm] = classDefsSize;
             tot_dvm++;
         }
         fclose(fp);
