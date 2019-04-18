@@ -26,10 +26,18 @@ struct FupkInterface {
     void* reserved2;
     void* reserved3;
     void* reserved4;
-    void* reserved5;
-    void* reserved6;
+    void* reserved5;        //data地址
+    void* reserved6;        //procmaps_cnt
     void* reserved7;
 };
+struct procmaps {
+    unsigned int l, r;
+    char perms[4];
+    unsigned int offest;
+    char pathname[100];
+}data[101000];
+int procmaps_cnt;
+
 FupkInterface* gUpkInterface;
 HashTable* userDexFiles = nullptr;
 Object* (*fdvmDecodeIndirectRef)(void* self, jobject jobj) = nullptr;
@@ -51,6 +59,7 @@ std::string nowdir;
 std::string recordFile, scheFile, logFile, dvmFile;
 int tot_dvm;
 u4 DvmName[50];
+
 void ReadClassDataHeader(const uint8_t **pData, DexClassDataHeader *pHeader) {
     pHeader->staticFieldsSize = readUnsignedLeb128(pData);
     pHeader->instanceFieldsSize = readUnsignedLeb128(pData);
@@ -199,6 +208,63 @@ void mkdir_DexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
 
     }
 }
+void itoa(char *buf, u4 d) {
+    memset(buf, 0, sizeof(buf));
+    char *p = buf;
+    char *p1, *p2;
+    u4 ud = d;
+    int divisor = 10;
+
+    do {
+        *p++ = (ud % divisor) + '0';
+    }
+    while (ud /= divisor);
+
+    /* Terminate BUF.  */
+    *p = 0;
+
+    /* Reverse BUF.  */
+    p1 = buf;
+    p2 = p - 1;
+    while (p1 < p2) {
+        char tmp = *p1;
+        *p1 = *p2;
+        *p2 = tmp;
+        p1++;
+        p2--;
+    }
+}
+void GetMaps() {
+    int pid = getpid();
+    char tmp[50];
+    itoa(tmp, pid);
+    //  /proc/2207/maps
+    std::string mapsfile = "/proc/" + std::string(tmp) + "/maps";
+    FILE *fp = fopen(mapsfile.c_str(), "r");
+    procmaps_cnt = 0;
+
+    while (true) {
+        if (fscanf(fp, "%x-%x %s %x %s %s", &data[procmaps_cnt].l, &data[procmaps_cnt].r,
+                   data[procmaps_cnt].perms, &data[procmaps_cnt].offest, tmp, tmp) == EOF)
+            break;
+        char c;
+        int i = 0;
+        while (true) {
+            c = getc(fp);
+            if (c == ' ')
+                continue;
+            if (c == '\n' || c == '\r')
+                break;
+            data[procmaps_cnt].pathname[i++] = c;
+        }
+        procmaps_cnt++;
+
+        //getchar();
+    }
+    fclose(fp);
+
+    return;
+}
 void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
                        int stDvmDex, int stClass, int stMethod) {
     DexFile *pDexFile = pDvmDex->pDexFile;
@@ -257,31 +323,21 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
             continue;
         }
 
-#if 0
         if (!fdvmIsClassInitialized(clazz)) {
             if (fdvmInitClass(clazz)) {
                 FLOGE("DexDump init: %s", descriptor);
             } else {
                 FLOGE("DexDump init failed: %s", descriptor);
+                continue;
             }
         }
-        else {
-            FLOGE("DexDump inited: %s", descriptor);
-        }
-#endif
+
+        GetMaps();
 
         gUpkInterface->reserved2 = (void *) (clazz);
+        gUpkInterface->reserved5 = (void *) (&data[0]);
+        gUpkInterface->reserved6 = (void *) (&procmaps_cnt);
 
-        /*
-         * 在record.txt中可看到所有类名
-         */
-        {
-
-            FILE *fp = fopen((const char *) gUpkInterface->reserved0, "a");
-            fprintf(fp, "%s\n", descriptor);
-            fflush(fp);
-            fclose(fp);
-        }
 
         jstring className = env->NewStringUTF(descriptor);
         jboolean flag;
@@ -340,32 +396,6 @@ Object* searchClassLoader(DvmDex *pDvmDex){
         FLOGE("DexDump select classLoader : %#x", (unsigned int)result);
     }
     return result;
-}
-void itoa(char *buf, u4 d) {
-    memset(buf, 0, sizeof(buf));
-    char *p = buf;
-    char *p1, *p2;
-    u4 ud = d;
-    int divisor = 10;
-
-    do {
-        *p++ = (ud % divisor) + '0';
-    }
-    while (ud /= divisor);
-
-    /* Terminate BUF.  */
-    *p = 0;
-
-    /* Reverse BUF.  */
-    p1 = buf;
-    p2 = p - 1;
-    while (p1 < p2) {
-        char tmp = *p1;
-        *p1 = *p2;
-        *p2 = tmp;
-        p1++;
-        p2--;
-    }
 }
 void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
     FLOGE("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ %d %d %d", stDvmDex, stClass, stMethod);
@@ -458,7 +488,6 @@ void init1(JNIEnv* env, jstring folder) {
     gUpkInterface->reserved0 = (void *)(recordFile.c_str());
     gUpkInterface->reserved1 = (void *)(scheFile.c_str());
     gUpkInterface->reserved4 = (void *)(str.c_str());
-    gUpkInterface->reserved5 = (void *)(logFile.c_str());
 
 }
 void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
@@ -470,6 +499,7 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     mywrite(tidFile, "%d\n", gettid());
 
     sleep((int)millis);
+
     /*
      * 开始dump的流程，这个流程可能是第一次执行，也可能不是
      */
@@ -521,6 +551,7 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
         InvokeEntry(env, stDvmDex, stClass, stMethod);
     }
     return;
+
 }
 bool init() {
     bool done = false;
