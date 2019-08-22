@@ -55,8 +55,7 @@ jmethodID hookMethodID;
 jclass dumpMethodclazz;
 
 std::string str;
-std::string nowdir;
-std::string recordFile, scheFile, logFile, dvmFile;
+std::string recordFile, scheFile, logFile, dvmFile, tidFile, codedir;
 int tot_dvm;
 u4 DvmName[50];
 
@@ -179,8 +178,8 @@ DvmDex* getdvmDex(int idx, const char *&dexName) {
 }
 void mkdir_DexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
     DexFile *pDexFile = pDvmDex->pDexFile;
-    unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
-    for (int i = 0; i < num_class_defs; i++) {
+    u4 num_class_defs = pDexFile->pHeader->classDefsSize;
+    for (u4 i = 0; i < num_class_defs; i++) {
         const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
         const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
 
@@ -188,15 +187,21 @@ void mkdir_DexFile(DvmDex *pDvmDex, Object *loader, JNIEnv* env) {
         const char *header2 = "Ldalvik";
         const char *header3 = "Ljava";
         const char *header4 = "Llibcore";
-        //如果是系统类，则跳过
+        const char *header5 = "Ljavax";
+        const char *header6 = "Lbutterknife";
+        //如果是系统类，或者classDataOff为0，则跳过
         if (!strncmp(header1, descriptor, strlen(header1)) ||
             !strncmp(header2, descriptor, strlen(header2)) ||
             !strncmp(header3, descriptor, strlen(header3)) ||
-            !strncmp(header4, descriptor, strlen(header4))) {
+            !strncmp(header4, descriptor, strlen(header4)) ||
+            !strncmp(header5, descriptor, strlen(header5)) ||
+            !strncmp(header6, descriptor, strlen(header6)) ||
+            !pClassDef->classDataOff) {
+            FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
             continue;
         }
 
-        std::string itdir = nowdir;
+        std::string itdir = codedir;
         int ln = strlen(descriptor);
         for (int i = 0; i < ln - 1; i++) {
             if (descriptor[i] == '/') {
@@ -270,40 +275,46 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
     DexFile *pDexFile = pDvmDex->pDexFile;
     Thread *self = fdvmThreadSelf();
 
-    unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
-    for (int i = stClass; i < num_class_defs; i++) {
+    u4 num_class_defs = pDexFile->pHeader->classDefsSize;
+    for (u4 i = stClass; i < num_class_defs; i++) {
         /*
          * 有可能在定义类或者类初始化的时候崩掉，下次就不经过这个类了
          */
-        std::string scheFile = str + std::string("/sche.txt");
         mywrite(scheFile, "%d %d %d\n", stDvmDex, i, -1);
 
         ClassObject *clazz = NULL;
         const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
         const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
 
+        if (strcmp(descriptor, "Lcom/perflyst/twire/activities/SearchActivity$1;") != 0)
+            continue;
 
         FLOGE("DexDump class: %d  %s", i, descriptor);
-
+        //continue;
         const char *header1 = "Landroid";
         const char *header2 = "Ldalvik";
         const char *header3 = "Ljava";
         const char *header4 = "Llibcore";
+        const char *header5 = "Ljavax";
+        const char *header6 = "Lbutterknife";
+
+
         //如果是系统类，或者classDataOff为0，则跳过
         if (!strncmp(header1, descriptor, strlen(header1)) ||
             !strncmp(header2, descriptor, strlen(header2)) ||
             !strncmp(header3, descriptor, strlen(header3)) ||
             !strncmp(header4, descriptor, strlen(header4)) ||
+            !strncmp(header5, descriptor, strlen(header5)) ||
+            !strncmp(header6, descriptor, strlen(header6)) ||
             !pClassDef->classDataOff) {
             FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
             continue;
         }
 
-
         /*
          * 每个类下面新建一个log.txt，用来记录这个类下的所有方法调用时的信息
          */
-        std::string itdir = nowdir;
+        std::string itdir = codedir;
         int ln = strlen(descriptor);
         for (int i = 0; i < ln - 1; i++) {
             itdir.push_back(descriptor[i]);
@@ -406,7 +417,6 @@ void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
     //////
     DvmDex* pDvmDex;
     Object *loader;
-    nowdir = str + "/code/";
     int dexSize = userDexFilesSize();
 
     bool ready = false;
@@ -439,9 +449,7 @@ void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
     return;
 }
 void mkdir_DvmDex(JNIEnv* env) {
-
-    nowdir = str + "/code/";
-    mkdir(nowdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    mkdir(codedir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
     for (int i = 0; i < userDexFilesSize(); i++) {
         const char *name;
@@ -480,10 +488,12 @@ void init1(JNIEnv* env, jstring folder) {
      */
     str = env->GetStringUTFChars(folder, nullptr);
     str = str + std::string("/101142ts");
+    tidFile = str + std::string("/tid.txt");
     recordFile = str + std::string("/record.txt");
     scheFile = str + std::string("/sche.txt");
     logFile = str + std::string("/log.txt");
     dvmFile = str + std::string("/dvmName.txt");
+    codedir = str + "/code/";
 
     gUpkInterface->reserved0 = (void *)(recordFile.c_str());
     gUpkInterface->reserved1 = (void *)(scheFile.c_str());
@@ -493,7 +503,6 @@ void init1(JNIEnv* env, jstring folder) {
 void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     FLOGE("in unpackAll");
     init1(env, folder);
-    std::string tidFile = str + std::string("/tid.txt");
     FLOGE("tid = %d",  gettid());
     FLOGE("tidFile = %s",  tidFile.c_str());
     mywrite(tidFile, "%d\n", gettid());
@@ -503,7 +512,6 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     /*
      * 开始dump的流程，这个流程可能是第一次执行，也可能不是
      */
-    std::string scheFile = str + std::string("/sche.txt");
 
     if (access(scheFile.c_str(), W_OK) != 0) {
         FLOGE("ERROR: no sche");
@@ -520,10 +528,8 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
         FILE *fp = fopen(dvmFile.c_str(), "r");
         tot_dvm = 0;
         u4 classDefsSize;
-        while (fscanf(fp, "%u", &classDefsSize) != EOF) {
-            DvmName[tot_dvm] = classDefsSize;
-            tot_dvm++;
-        }
+        while (fscanf(fp, "%u", &classDefsSize) != EOF)
+            DvmName[tot_dvm++] = classDefsSize;
         fclose(fp);
     }
     int stDvmDex, stClass, stMethod;

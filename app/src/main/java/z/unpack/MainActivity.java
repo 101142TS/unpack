@@ -21,8 +21,8 @@ public class MainActivity extends AppCompatActivity {
         super();
     }
 
-    public final static String mTargetPackage = "com.example.simple";
-    //public final static String mTargetPackage = "com.vjson.anime";  //legu 2.10.2.2
+    //public final static String mTargetPackage = "com.example.simple";
+    //public final static Strin/home/b/Desktop/unpackg mTargetPackage = "com.vjson.anime";  //legu 2.10.2.2
     //public final static String mTargetPackage = "com.jr.kingofglorysupport"; //legu 2.10.2.3
     //public final static String mTargetPackage = "com.nbvru.wepnb.bvfdfdc";  //legu 2.10.3.1
     //public final static String mTargetPackage = "com.billy.sdclean";        //legu 2.10.4.0
@@ -38,15 +38,20 @@ public class MainActivity extends AppCompatActivity {
     //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so bdc6e7786076696da260d8bbbafe570e
     //public final static String mTargetPackage = "com.mytest.demo"; //Bangle Demo
     //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so da3fc3018e6bf81e6fb9e5e8f7e785cb
-    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so    20180831
-    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so    20180208
-    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so    20170711
-    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so    20190312
+    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so
     //public final static String mTargetPackage = "zzz.jjni"; //360sample
     //public final static String mTargetPackage = "e.b.myapplication";
     //public final static String mTargetPackage = "github.jp1017.hellojni";
-    //public final static String mTargetPackage = "com.sf.activity";   //assets/ijm_lib/   20190412
+    //public final static String mTargetPackage = "com.sf.activity";   //assets/ijm_lib/
+    //public final static String mTargetPackage = "aihuishou.aihuishouapp"; //dingxiang
     //public final static String mTargetPackage = "com.yanxin.eloanan";   //assets/main000/   20190321
+    //public final static String mTargetPackage = "com.iss.qilubank";
+    //public final static String mTargetPackage = "zzz.testnative";
+    //public final static String mTargetPackage = "com.greenpoint.android.mc10086.activity";
+    //public final static String mTargetPackage = "com.icbc";
+    public final static String mTargetPackage = "com.perflyst.twire";
+    //public final static String mTargetPackage = "github.vatsal.easyweatherdemo";
+    //public final static String mTargetPackage = "edu.testapk.crackme";
     static {
         System.loadLibrary("unpack");
     }
