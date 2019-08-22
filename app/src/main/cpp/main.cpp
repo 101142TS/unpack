@@ -274,7 +274,7 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
                        int stDvmDex, int stClass, int stMethod) {
     DexFile *pDexFile = pDvmDex->pDexFile;
     Thread *self = fdvmThreadSelf();
-
+    //
     u4 num_class_defs = pDexFile->pHeader->classDefsSize;
     for (u4 i = stClass; i < num_class_defs; i++) {
         /*
