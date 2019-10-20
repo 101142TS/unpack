@@ -286,9 +286,6 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
         const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
         const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
 
-        if (strcmp(descriptor, "Lcom/perflyst/twire/activities/SearchActivity$1;") != 0)
-            continue;
-
         FLOGE("DexDump class: %d  %s", i, descriptor);
         //continue;
         const char *header1 = "Landroid";
@@ -321,34 +318,11 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
         }
         itdir = itdir + "/" + "log.txt";
         gUpkInterface->reserved7 = (void *) (itdir.c_str());
-
-        fdvmClearException(self);
-        clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
-        // 当classLookUp抛出异常时，若没有进行处理就进入下一次lookUp，将导致dalvikAbort
-        // 具体见defineClassNative中的注释
-        // 这里选择直接清空exception
-        fdvmClearException(self);
-
-        if (!clazz) {
-            FLOGE("DexDump defineClass %s failed", descriptor);
-            continue;
-        }
-
-        if (!fdvmIsClassInitialized(clazz)) {
-            if (fdvmInitClass(clazz)) {
-                FLOGE("DexDump init: %s", descriptor);
-            } else {
-                FLOGE("DexDump init failed: %s", descriptor);
-                continue;
-            }
-        }
-
-        GetMaps();
-
-        gUpkInterface->reserved2 = (void *) (clazz);
+        gUpkInterface->reserved2 = (void *) (loader);
         gUpkInterface->reserved5 = (void *) (&data[0]);
         gUpkInterface->reserved6 = (void *) (&procmaps_cnt);
-
+        GetMaps();
+        fdvmClearException(self);
 
         jstring className = env->NewStringUTF(descriptor);
         jboolean flag;
@@ -366,8 +340,11 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
                                                 (jint) stDvmDex,
                                                 (jint) i,
                                                 (jint) 0);
+        if (flag == JNI_FALSE)
+            FLOGE("DexDump defineClass %s failed", descriptor);
         env->DeleteLocalRef(className);
 
+        fdvmClearException(self);
     }
 }
 Object* searchClassLoader(DvmDex *pDvmDex){

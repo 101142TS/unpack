@@ -37,7 +37,7 @@ public class MainActivity extends AppCompatActivity {
     //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so f0fa7384273217a2431ab1c60ed21037
     //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so bdc6e7786076696da260d8bbbafe570e
     //public final static String mTargetPackage = "com.mytest.demo"; //Bangle Demo
-    //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so da3fc3018e6bf81e6fb9e5e8f7e785cb
+    //public final static String mTargetPackage = "com.huxiu";    //lia.bjiagu.so da3fc3018e6bf81e6fb9e5e8f7e785cb
     //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so
     //public final static String mTargetPackage = "zzz.jjni"; //360sample
     //public final static String mTargetPackage = "e.b.myapplication";
@@ -49,9 +49,17 @@ public class MainActivity extends AppCompatActivity {
     //public final static String mTargetPackage = "zzz.testnative";
     //public final static String mTargetPackage = "com.greenpoint.android.mc10086.activity";
     //public final static String mTargetPackage = "com.icbc";
-    public final static String mTargetPackage = "com.perflyst.twire";
+    //public final static String mTargetPackage = "com.perflyst.twire";
+    //public final static String mTargetPackage = "org.zirco";
+    //public final static String mTargetPackage = "org.scoutant.blokish";
+    //public final static String mTargetPackage = "com.xargsgrep.portknocker";
     //public final static String mTargetPackage = "github.vatsal.easyweatherdemo";
     //public final static String mTargetPackage = "edu.testapk.crackme";
+    //public final static String mTargetPackage = "org.csploit.android";
+    //public final static String mTargetPackage = "jp.forkhub";
+    //public final static String mTargetPackage = "eu.depau.etchdroid";
+    //public final static String mTargetPackage = "io.github.hopedia";
+    public final static String mTargetPackage = "org.schabi.newpipelegacy";
     static {
         System.loadLibrary("unpack");
     }
