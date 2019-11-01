@@ -55,7 +55,7 @@ jmethodID hookMethodID;
 jclass dumpMethodclazz;
 
 std::string str;
-std::string recordFile, scheFile, logFile, dvmFile, tidFile, codedir;
+std::string recordFile, scheFile, logFile, dvmFile, tidFile, codedir, stableFile;
 int tot_dvm;
 u4 DvmName[50];
 
@@ -387,17 +387,11 @@ Object* searchClassLoader(DvmDex *pDvmDex){
 }
 void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
     FLOGE("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ %d %d %d", stDvmDex, stClass, stMethod);
-    //////
-    for (int i = 0; i < tot_dvm; i++) {
-        FLOGE("DvmName %d : %u", i, DvmName[i]);
-    }
-    //////
-    DvmDex* pDvmDex;
+    DvmDex *pDvmDex;
     Object *loader;
-    int dexSize = userDexFilesSize();
 
     bool ready = false;
-    for (int i = 0; i < dexSize; i++) {
+    for (int i = 0; i < userDexFilesSize(); i++) {
         const char *name;
         pDvmDex = getdvmDex(i, name);
         if (pDvmDex == nullptr) {
@@ -406,7 +400,7 @@ void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
 
         loader = searchClassLoader(pDvmDex);
 
-        if (loader == NULL)     continue;
+        if (loader == NULL) continue;
         FLOGE("pDvmDex %d : %u", i, pDvmDex->pDexFile->pHeader->classDefsSize);
         if (pDvmDex->pDexFile->pHeader->classDefsSize == DvmName[stDvmDex]) {
             ready = true;
@@ -419,11 +413,48 @@ void InvokeEntry(JNIEnv* env, int stDvmDex, int stClass, int stMethod) {
         DumpClassbyInovke(pDvmDex, loader, env, stDvmDex, stClass, stMethod);
         mywrite(scheFile, "%d -1 -1", stDvmDex + 1);
         return;
-    }
-    else {
+    } else {
         FLOGE("ERROR : dvmDex not found!");
+        return;
     }
-    return;
+}
+bool stable() {
+    //此函数判断当前内存里可dump的DexFile和预存的DexFile是否对的上，
+    int b[110];
+    int cntb = 0;
+    for (int i = 0; i < userDexFilesSize(); i++) {
+        const char *name;
+        auto pDvmDex = getdvmDex(i, name);
+        if (pDvmDex == nullptr) {
+            continue;
+        }
+
+        Object *loader = searchClassLoader(pDvmDex);
+
+        if (loader == NULL) continue;
+        b[cntb++] = pDvmDex->pDexFile->pHeader->classDefsSize;
+    }
+
+    for (int i = 0; i < cntb; i++)
+        FLOGE("@@@@@@@@@@@@@ %d", b[i]);
+
+    if (tot_dvm > cntb)
+        return false;
+
+    for (int i = 0; i < tot_dvm; i++) {
+        bool findit = false;
+        for (int j = 0; j < cntb; j++) {
+            if (DvmName[i] == b[j]) {
+                findit = true;
+                break;
+            }
+
+        }
+        if (findit == false) {
+            return false;
+        }
+    }
+    return true;
 }
 void mkdir_DvmDex(JNIEnv* env) {
     mkdir(codedir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
@@ -438,11 +469,6 @@ void mkdir_DvmDex(JNIEnv* env) {
         Object *loader = searchClassLoader(pDvmDex);
 
         if (loader == NULL)     continue;
-
-        FILE *fp = fopen(dvmFile.c_str(), "a");
-        fprintf(fp, "%u\n", pDvmDex->pDexFile->pHeader->classDefsSize);
-        fflush(fp);
-        fclose(fp);
 
         gUpkInterface->reserved3 = (void *)(loader);
 
@@ -470,6 +496,7 @@ void init1(JNIEnv* env, jstring folder) {
     scheFile = str + std::string("/sche.txt");
     logFile = str + std::string("/log.txt");
     dvmFile = str + std::string("/dvmName.txt");
+    stableFile = str + std::string("/stableFile.txt");
     codedir = str + "/code/";
 
     gUpkInterface->reserved0 = (void *)(recordFile.c_str());
@@ -483,24 +510,20 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     FLOGE("tid = %d",  gettid());
     FLOGE("tidFile = %s",  tidFile.c_str());
     mywrite(tidFile, "%d\n", gettid());
-
-    sleep((int)millis);
-
+    sleep(3);
     /*
      * 开始dump的流程，这个流程可能是第一次执行，也可能不是
      */
-
     if (access(scheFile.c_str(), W_OK) != 0) {
         FLOGE("ERROR: no sche");
         return;
     }
-    std::string makeup = str + std::string("/makeup");
-    if (access(makeup.c_str(), W_OK) != 0) {
-        //第一次流程的时候要记录能dump的文件名
-        sleep(10);
-        mkdir_DvmDex(env);
-        mywrite(makeup, "YES\n");
+    //必须要确定哪些DexFile是我想要的
+    if (access(dvmFile.c_str(), W_OK) != 0) {
+        FLOGE("ERROR: no dvmFile");
+        return;
     }
+    //读入我想要的dvmName,
     {
         FILE *fp = fopen(dvmFile.c_str(), "r");
         tot_dvm = 0;
@@ -509,6 +532,24 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
             DvmName[tot_dvm++] = classDefsSize;
         fclose(fp);
     }
+
+    //直到内存里的dex文件达到稳定，才开始dump
+    while (stable() == false)
+        sleep(1);
+    //稳定了，向stableFile内写入
+    {
+        FILE *fp = fopen(stableFile.c_str(), "w");
+        mywrite(stableFile, "%d\n", gettid());
+        fclose(fp);
+    }
+
+    std::string makeup = str + std::string("/makeup");
+    if (access(makeup.c_str(), W_OK) != 0) {
+        //第一次流程的时候要记录能dump的文件名
+        mkdir_DvmDex(env);
+        mywrite(makeup, "YES\n");
+    }
+
     int stDvmDex, stClass, stMethod;
     /*
      * 下一次强制调用从stDvmDex, stClass, stMethod开始
