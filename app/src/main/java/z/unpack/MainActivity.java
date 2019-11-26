@@ -65,8 +65,43 @@ public class MainActivity extends AppCompatActivity {
     //public final static String mTargetPackage = "com.forever.browser";
     //public final static String mTargetPackage = "com.cmcc.cmvideo";
     //public final static String mTargetPackage = "com.qihoo360.mobilesafe.opti.powerctl";
-    public final static String mTargetPackage = "com.softbank.mbank.xy.qhjd";
+    //public final static String mTargetPackage = "com.softbank.mbank.xy.qhjd";
     //public final static String mTargetPackage = "com.picc.aasipods";
+    //public final static String mTargetPackage = "com.showself.ui";
+    //public final static String mTargetPackage = "com.huaqian";
+    //public final static String mTargetPackage = "com.zlqb.app";
+    //public final static String mTargetPackage = "com.storm.smart";
+    //public final static String mTargetPackage = "com.xwsd.app";
+    //public final static String mTargetPackage = "cn.xxt.jxlxandroid";
+    //public final static String mTargetPackage = "com.android.baiyimao";com.shcc.microcredit
+    //public final static String mTargetPackage = "com.z.hhwk";
+    //public final static String mTargetPackage = "com.esbook.reader";
+    //public final static String mTargetPackage = "com.anysoft.tyyd";
+    //public final static String mTargetPackage = "com.autohome.mycar";
+    //public final static String mTargetPackage = "fm.jihua.kecheng";
+    //public final static String mTargetPackage = "com.ludashi.benchmark";
+    //public final static String mTargetPackage = "com.wenba.bangbang";
+    //public final static String mTargetPackage = "com.qihoo.loan";
+    //public final static String mTargetPackage = "com.greenpoint.android.mc10086.activity";
+    //public final static String mTargetPackage = "com.mobike.mobikeapp";
+    //public final static String mTargetPackage = "com.shcc.microcredit";
+    //public final static String mTargetPackage = "com.ophone.reader.ui";
+    //public final static String mTargetPackage = "com.pmp.ppmoney";
+    //public final static String mTargetPackage = "com.mygolbs.mybus";
+    //public final static String mTargetPackage = "com.bertadata.qxb";
+    //public final static String mTargetPackage = "com.memezhibo.android";
+    //public final static String mTargetPackage = "org.cocos2dx.VirusVsVirus2";
+    //public final static String mTargetPackage = "com.mojang.minecraftpetool";
+    //public final static String mTargetPackage = "com.tencent.qlauncher.lite";
+    //public final static String mTargetPackage = "com.tencent.tgclub";
+    //public final static String mTargetPackage = "com.black.unique";
+    //public final static String mTargetPackage = "com.fqapp.zsh";
+    //public final static String mTargetPackage = "com.shangfang.gylm";
+    //public final static String mTargetPackage = "com.songguoyhqw";
+    //public final static String mTargetPackage = "com.sf.activity";
+    //public final static String mTargetPackage = "cn.dictcn.android.digitize.swg_xhzd_21003";
+    //public final static String mTargetPackage = "com.hundsun.winner.pazq";
+    public final static String mTargetPackage = "com.cqmc.client";
     static {
         System.loadLibrary("unpack");
     }

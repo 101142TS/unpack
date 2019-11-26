@@ -307,6 +307,8 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
             FLOGE("DexDump %s Landroid or classDataOff 0", descriptor);
             continue;
         }
+        //if (strcmp(descriptor, "Lorg/scoutant/blokish/PieceUI;") != 0)
+        //    continue;
 
         /*
          * 每个类下面新建一个log.txt，用来记录这个类下的所有方法调用时的信息
@@ -510,6 +512,16 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     FLOGE("tid = %d",  gettid());
     FLOGE("tidFile = %s",  tidFile.c_str());
     mywrite(tidFile, "%d\n", gettid());
+
+    /*
+    {
+        int tmp = gettid();
+        FILE *fp = fopen(tidFile.c_str(), "wb");
+        fwrite(&tmp, sizeof(int), 1, fp);
+        fflush(fp);
+        fclose(fp);
+    }
+    */
     sleep(3);
     /*
      * 开始dump的流程，这个流程可能是第一次执行，也可能不是
