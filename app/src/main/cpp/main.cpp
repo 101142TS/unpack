@@ -344,9 +344,14 @@ void DumpClassbyInovke(DvmDex *pDvmDex, Object *loader, JNIEnv* env,
                                                 (jint) 0);
         if (flag == JNI_FALSE)
             FLOGE("DexDump defineClass %s failed", descriptor);
-        env->DeleteLocalRef(className);
 
-        fdvmClearException(self);
+        env->DeleteLocalRef(className);
+        if (env->ExceptionCheck()) {
+            fdvmClearException(self);
+            exit(0);
+        }
+        else
+            fdvmClearException(self);
     }
 }
 Object* searchClassLoader(DvmDex *pDvmDex){
@@ -512,17 +517,7 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     FLOGE("tid = %d",  gettid());
     FLOGE("tidFile = %s",  tidFile.c_str());
     mywrite(tidFile, "%d\n", gettid());
-
-    /*
-    {
-        int tmp = gettid();
-        FILE *fp = fopen(tidFile.c_str(), "wb");
-        fwrite(&tmp, sizeof(int), 1, fp);
-        fflush(fp);
-        fclose(fp);
-    }
-    */
-    sleep(3);
+    //sleep(3);
     /*
      * 开始dump的流程，这个流程可能是第一次执行，也可能不是
      */
@@ -546,8 +541,15 @@ void unpackAll(JNIEnv* env, jobject obj, jstring folder, jint millis) {
     }
 
     //直到内存里的dex文件达到稳定，才开始dump
-    while (stable() == false)
+
+    int t = 0;
+    while (stable() == false) {
         sleep(1);
+        //usleep(10000);
+        //t = t + 10000;
+    }
+    FLOGE("GOT IT time %d ms:", t /  1000);
+
     //稳定了，向stableFile内写入
     {
         FILE *fp = fopen(stableFile.c_str(), "w");
